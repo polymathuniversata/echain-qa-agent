@@ -39,13 +39,14 @@ export class QAAgent {
 
   private log(level: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR', message: string): void {
     const timestamp = new Date().toLocaleTimeString();
-    const logEntry = `| ${timestamp} | ${level} | ${this.redactSecrets(message)} |`;
+    const redactedMessage = this.redactSecrets(message);
+    const logEntry = `| ${timestamp} | ${level} | ${redactedMessage} |`;
 
     if (this.options.verbose || level === 'ERROR') {
       const color = level === 'ERROR' ? chalk.red :
                    level === 'WARNING' ? chalk.yellow :
                    level === 'SUCCESS' ? chalk.green : chalk.blue;
-      console.log(color(`${timestamp} | ${level} | ${message}`));
+      console.log(color(`${timestamp} | ${level} | ${redactedMessage}`));
     }
 
     // Append to QA log
@@ -485,17 +486,122 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
     this.log('INFO', 'Documentation updates completed');
   }
 
-  private async generateReport(results: QAResults): Promise<void> {
-    const reportPath = path.join(this.projectRoot, 'qa-report.json');
+  async setupHooks(): Promise<void> {
+    this.log('INFO', 'Setting up git hooks...');
+
+    const setupScript = path.join(__dirname, '..', 'scripts', 'setup-hooks.sh');
+    if (!await pathExists(setupScript)) {
+      throw new Error('Setup script not found');
+    }
+
+    const success = await this.runCommand(`bash "${setupScript}"`, 'Git hooks setup');
+    if (!success) {
+      throw new Error('Failed to setup git hooks');
+    }
+
+    this.log('SUCCESS', 'Git hooks setup completed');
+  }
+
+  async checkHooks(): Promise<boolean> {
+    this.log('INFO', 'Checking git hooks status...');
+
+    const hooksDir = path.join(this.projectRoot, '.git', 'hooks');
+    const preCommitHook = path.join(hooksDir, 'pre-commit');
+    const prePushHook = path.join(hooksDir, 'pre-push');
+
+    const preCommitExists = await pathExists(preCommitHook);
+    const prePushExists = await pathExists(prePushHook);
+
+    if (!preCommitExists && !prePushExists) {
+      this.log('WARNING', 'No QA hooks found');
+      return false;
+    }
+
+    if (preCommitExists) {
+      // Check if it's executable and contains QA logic
+      try {
+        const content = await readFile(preCommitHook, 'utf-8');
+        if (content.includes('QA checks')) {
+          this.log('SUCCESS', 'Pre-commit hook is properly configured');
+        } else {
+          this.log('WARNING', 'Pre-commit hook exists but may not be QA hook');
+        }
+      } catch (error) {
+        this.log('WARNING', 'Cannot read pre-commit hook');
+      }
+    }
+
+    if (prePushExists) {
+      try {
+        const content = await readFile(prePushHook, 'utf-8');
+        if (content.includes('QA checks')) {
+          this.log('SUCCESS', 'Pre-push hook is properly configured');
+        } else {
+          this.log('WARNING', 'Pre-push hook exists but may not be QA hook');
+        }
+      } catch (error) {
+        this.log('WARNING', 'Cannot read pre-push hook');
+      }
+    }
+
+    return true;
+  }
+
+  async removeHooks(): Promise<void> {
+    this.log('INFO', 'Removing git hooks...');
+
+    const hooksDir = path.join(this.projectRoot, '.git', 'hooks');
+    const preCommitHook = path.join(hooksDir, 'pre-commit');
+    const prePushHook = path.join(hooksDir, 'pre-push');
+
+    let removed = false;
+
+    if (await pathExists(preCommitHook)) {
+      try {
+        const content = await readFile(preCommitHook, 'utf-8');
+        if (content.includes('QA checks')) {
+          await fs.unlink(preCommitHook);
+          this.log('SUCCESS', 'Pre-commit hook removed');
+          removed = true;
+        } else {
+          this.log('WARNING', 'Pre-commit hook exists but is not a QA hook - not removing');
+        }
+      } catch (error) {
+        this.log('ERROR', 'Failed to remove pre-commit hook');
+      }
+    }
+
+    if (await pathExists(prePushHook)) {
+      try {
+        const content = await readFile(prePushHook, 'utf-8');
+        if (content.includes('QA checks')) {
+          await fs.unlink(prePushHook);
+          this.log('SUCCESS', 'Pre-push hook removed');
+          removed = true;
+        } else {
+          this.log('WARNING', 'Pre-push hook exists but is not a QA hook - not removing');
+        }
+      } catch (error) {
+        this.log('ERROR', 'Failed to remove pre-push hook');
+      }
+    }
+
+    if (!removed) {
+      this.log('INFO', 'No QA hooks found to remove');
+    } else {
+      this.log('SUCCESS', 'Git hooks removal completed');
+    }
+  }  private async generateReport(results: QAResults): Promise<void> {
+    const reportPath = path.join(this.projectRoot, "qa-report.json");
     const report = {
       timestamp: results.timestamp.toISOString(),
       duration: results.duration,
       errors: results.errors,
       warnings: results.warnings,
-      status: results.errors > 0 ? 'failure' : 'success'
+      status: results.errors > 0 ? "failure" : "success"
     };
 
     await writeFile(reportPath, JSON.stringify(report, null, 2));
-    this.log('SUCCESS', `QA report generated: ${reportPath}`);
+    this.log("SUCCESS", `QA report generated: ${reportPath}`);
   }
 }

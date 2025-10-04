@@ -10,7 +10,10 @@
   "scripts": {
     "build": "tsc",
     "dev": "ts-node src/cli.ts",
-    "test": "echo \"No tests specified yet\"",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:qa": "npm run build && node dist/cli.js run --verbose",
     "lint": "eslint src/**/*.ts",
     "type-check": "tsc --noEmit",
     "prepublishOnly": "npm run build",
@@ -62,9 +65,12 @@
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
     "@types/glob": "^8.1.0",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.10.0",
     "bun-types": "^1.0.0",
     "eslint": "^8.55.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.4",
     "typescript": "^5.3.0"
   },
   "peerDependencies": {

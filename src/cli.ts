@@ -103,6 +103,54 @@ program
     }
   });
 
+program
+  .command('setup-hooks')
+  .description('Install git hooks for automatic QA checks')
+  .action(async () => {
+    const agent = new QAAgent();
+    try {
+      await agent.setupHooks();
+      console.log(chalk.green('✅ Git hooks installed successfully'));
+      console.log('Hooks will run QA checks on commit and push');
+    } catch (error) {
+      console.error(chalk.red('❌ Hook setup failed:'), error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('check-hooks')
+  .description('Check if QA git hooks are properly installed')
+  .action(async () => {
+    const agent = new QAAgent();
+    try {
+      const hasHooks = await agent.checkHooks();
+      if (hasHooks) {
+        console.log(chalk.green('✅ QA hooks are properly configured'));
+      } else {
+        console.log(chalk.yellow('⚠️  No QA hooks found'));
+        console.log('Run "echain-qa setup-hooks" to install them');
+      }
+    } catch (error) {
+      console.error(chalk.red('❌ Hook check failed:'), error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('remove-hooks')
+  .description('Remove QA git hooks')
+  .action(async () => {
+    const agent = new QAAgent();
+    try {
+      await agent.removeHooks();
+      console.log(chalk.green('✅ QA hooks removed successfully'));
+    } catch (error) {
+      console.error(chalk.red('❌ Hook removal failed:'), error);
+      process.exit(1);
+    }
+  });
+
 // Default action - run full suite
 program.action(async () => {
   const agent = new QAAgent();

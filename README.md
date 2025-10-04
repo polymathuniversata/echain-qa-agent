@@ -1,5 +1,9 @@
 # echain-qa-agent
 
+[![npm version](https://badge.fury.io/js/echain-qa-agent.svg)](https://badge.fury.io/js/echain-qa-agent)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
+
 A comprehensive QA automation tool designed specifically for blockchain and Web3 projects. This package provides automated code quality checks, testing, security scanning, and documentation updates to ensure your project maintains high standards.
 
 ## Features
@@ -179,6 +183,73 @@ The QA agent generates:
 - NPM or Bun package manager
 - For blockchain projects: Hardhat or similar tooling
 - For frontend projects: Next.js, React, or similar
+
+## Troubleshooting
+
+### Common Issues
+
+**Hooks not running:**
+- Ensure you're in a git repository
+- Check that hooks are executable: `ls -la .git/hooks/`
+- Verify hooks contain QA logic: `cat .git/hooks/pre-commit`
+
+**QA agent not found:**
+- Install as dev dependency: `npm install --save-dev echain-qa-agent`
+- Or globally: `npm install -g echain-qa-agent`
+
+**NPM install failures:**
+- Clear npm cache: `npm cache clean --force`
+- Delete node_modules and reinstall
+- Check Node.js version (>= 18.0.0)
+
+**Permission denied on hooks:**
+- Make hooks executable: `chmod +x .git/hooks/pre-commit`
+- On Windows, ensure git hooks are enabled
+
+**Tests failing:**
+- Install dependencies in subprojects (frontend/, blockchain/)
+- Check configuration in `.qa-config.json`
+
+## Project Examples
+
+### Hardhat Project
+```
+my-hardhat-project/
+├── contracts/          # Solidity contracts
+├── test/              # Contract tests
+├── scripts/           # Deployment scripts
+├── frontend/          # React/Next.js frontend
+└── package.json
+```
+
+### Next.js + Blockchain Project
+```
+my-fullstack-project/
+├── frontend/          # Next.js app
+│   ├── components/
+│   ├── pages/
+│   └── package.json
+├── blockchain/        # Hardhat project
+│   ├── contracts/
+│   ├── test/
+│   └── hardhat.config.js
+└── package.json
+```
+
+## Usage Recommendations
+
+### For Users
+- **Install as dev dependency** in all blockchain/Web3 projects for automatic QA
+- **Enable pre-commit hooks** for immediate feedback on code quality
+- **Run regular updates** to get latest security checks and improvements
+- **Use dry-run mode** (`--dry-run`) for testing QA setup
+
+### Version Management
+- Follows **semantic versioning** (MAJOR.MINOR.PATCH)
+- **Major versions** may include breaking changes
+- **Minor versions** add new features
+- **Patch versions** contain bug fixes
+- Consider **beta releases** for new major features
 
 ## Contributing
 
