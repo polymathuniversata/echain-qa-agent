@@ -6,7 +6,7 @@
 
 A comprehensive QA automation tool designed specifically for blockchain and Web3 projects. This package provides automated code quality checks, testing, security scanning, and documentation updates to ensure your project maintains high standards.
 
-## ✨ New in v2.0.0
+## ✨ New in v2.1.0
 
 - 🚀 **Progress Indicators**: Visual progress bars for all long-running operations
 - 💾 **Result Caching**: Intelligent caching system for faster repeated runs
@@ -15,6 +15,8 @@ A comprehensive QA automation tool designed specifically for blockchain and Web3
 - 🔄 **CI/CD Integration**: GitHub Actions and Jenkins pipeline templates
 - 🪝 **Enhanced Git Hooks**: Cross-platform hook support with PowerShell for Windows
 - 📊 **Performance Monitoring**: Load testing capabilities for large codebases
+- 🔄 **Version Checking**: Automatic QA agent version checking in git hooks
+- 🚫 **Bypass Options**: Environment variables and commit tags to skip QA checks
 
 ## Features
 
@@ -194,7 +196,7 @@ Create a `.qa-config.json` file in your project root to customize behavior:
 
 ```json
 {
-  "version": "2.0.0",
+  "version": "2.1.0",
   "project": {
     "name": "My Blockchain Project",
     "type": "blockchain",
