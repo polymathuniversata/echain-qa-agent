@@ -6,14 +6,27 @@
 
 A comprehensive QA automation tool designed specifically for blockchain and Web3 projects. This package provides automated code quality checks, testing, security scanning, and documentation updates to ensure your project maintains high standards.
 
+## ✨ New in v2.0.0
+
+- 🚀 **Progress Indicators**: Visual progress bars for all long-running operations
+- 💾 **Result Caching**: Intelligent caching system for faster repeated runs
+- 🔌 **Plugin Architecture**: Extensible system for custom QA checks
+- ⚙️ **Configuration Validation**: JSON schema validation for QA configurations
+- 🔄 **CI/CD Integration**: GitHub Actions and Jenkins pipeline templates
+- 🪝 **Enhanced Git Hooks**: Cross-platform hook support with PowerShell for Windows
+- 📊 **Performance Monitoring**: Load testing capabilities for large codebases
+
 ## Features
 
 - 🧹 **Code Quality**: Automated linting and formatting for TypeScript, JavaScript, and Solidity
 - 🧪 **Testing**: Runs unit tests, integration tests, and blockchain-specific tests
-- 🔒 **Security**: Dependency auditing and secret detection
+- 🔒 **Security**: Dependency auditing and secret detection with progress tracking
 - 🏗️ **Build Verification**: Ensures production builds work correctly
 - 📚 **Documentation**: Automatic documentation updates and QA logging
-- ⚡ **Fast**: Built with TypeScript for optimal performance
+- ⚡ **Fast**: Built with TypeScript for optimal performance and caching
+- 🔧 **Extensible**: Plugin system for custom QA checks
+- 📈 **Progress Tracking**: Visual feedback for all operations
+- 🚀 **CI/CD Ready**: Pre-built pipelines for GitHub Actions and Jenkins
 
 ## Installation
 
@@ -32,6 +45,25 @@ npm install --save-dev echain-qa-agent
 # or
 bun add -d echain-qa-agent
 ```
+
+## Quick Start
+
+1. **Install the QA agent**:
+   ```bash
+   npm install --save-dev echain-qa-agent
+   ```
+
+2. **Initialize QA configuration**:
+   ```bash
+   npx echain-qa init
+   ```
+
+3. **Run your first QA check**:
+   ```bash
+   npx echain-qa run
+   ```
+
+The QA agent will automatically detect your project structure and run appropriate checks!
 
 ## Git Hooks Setup
 
@@ -55,12 +87,19 @@ To test the hooks:
 1. Make a small change to any file
 2. Run: `git add . && git commit -m 'test'`
 
-### Command Line Interface
+### Cross-Platform Support
+
+The QA agent includes enhanced cross-platform support:
+- **Unix/Linux**: Bash-based hooks
+- **Windows**: PowerShell-based hooks with Git for Windows compatibility
+- **macOS**: Native bash support
+
+## Command Line Interface
 
 After global installation, use the `echain-qa` command:
 
 ```bash
-# Run full QA suite
+# Run full QA suite (with progress bars and caching)
 echain-qa run
 
 # Run only linting
@@ -77,21 +116,26 @@ echain-qa build
 
 # Initialize QA configuration
 echain-qa init
+
+# Run with dry-run mode (no actual changes)
+echain-qa run --dry-run
+
+# Verbose output
+echain-qa run --verbose
 ```
 
 ### Programmatic Usage
 
 ```typescript
-```typescript
 import { QAAgent } from 'echain-qa-agent';
-```
 
 const qaAgent = new QAAgent({
   verbose: true,
+  dryRun: false,
   projectRoot: '/path/to/your/project'
 });
 
-// Run full QA suite
+// Run full QA suite with caching and plugins
 const results = await qaAgent.runFullSuite();
 
 console.log(`QA completed in ${results.duration}s`);
@@ -108,7 +152,10 @@ your-project/
 ├── blockchain/        # Hardhat, Foundry, or other blockchain tools
 ├── docs/             # Documentation files
 ├── scripts/          # Build and deployment scripts
-└── qa-report.json    # Generated QA reports
+├── .qa-plugins/      # Custom QA plugins (optional)
+├── .qa-config.json   # QA configuration
+├── qa-report.json    # Generated QA reports
+└── docs/qalog.md     # QA session logs
 ```
 
 ## Configuration
@@ -130,46 +177,157 @@ Create a `.qa-config.json` file in your project root to customize behavior:
     "build": true,
     "performance": false
   },
+  "caching": {
+    "enabled": true,
+    "ttlHours": 24
+  },
+  "plugins": {
+    "enabled": true,
+    "autoLoad": true
+  },
   "paths": {
     "frontend": "frontend",
     "blockchain": "blockchain",
     "docs": "docs",
-    "tests": "test"
+    "tests": "test",
+    "plugins": ".qa-plugins"
+  },
+  "hooks": {
+    "preCommit": true,
+    "prePush": true,
+    "autoInstall": true
   }
+}
+```
+
+## Plugin System
+
+Extend the QA agent with custom checks by creating plugins in the `.qa-plugins/` directory:
+
+```typescript
+// .qa-plugins/custom-check.js
+module.exports = {
+  name: 'custom-check',
+  description: 'My custom QA check',
+
+  async run(context) {
+    // Your custom logic here
+    const issues = [];
+
+    // Example: Check for TODO comments
+    const files = await context.glob('**/*.{js,ts}');
+    for (const file of files) {
+      const content = await context.readFile(file);
+      if (content.includes('TODO')) {
+        issues.push({
+          file,
+          message: 'TODO comment found',
+          severity: 'warning'
+        });
+      }
+    }
+
+    return { errors: 0, warnings: issues.length, issues };
+  }
+};
+```
+
+## CI/CD Integration
+
+### GitHub Actions
+
+Use the provided workflow template (`.github/workflows/qa-checks.yml`):
+
+```yaml
+name: QA Checks
+on: [push, pull_request]
+
+jobs:
+  qa-checks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm ci
+      - run: npm run qa
+```
+
+### Jenkins Pipeline
+
+Use the provided `Jenkinsfile`:
+
+```groovy
+pipeline {
+    agent any
+
+    stages {
+        stage('QA Checks') {
+            steps {
+                sh 'npm run qa'
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'qa-report.json,docs/qalog.md', allowEmptyArchive: true
+        }
+    }
 }
 ```
 
 ## QA Checks Performed
 
 ### Code Quality
-- ESLint for TypeScript/JavaScript
+- ESLint for TypeScript/JavaScript with progress tracking
 - TypeScript compilation checks
-- Solidity linting with Solhint
+- Solidity linting with Solhint (Hardhat, Foundry, Truffle)
 - Code formatting verification
 
 ### Testing
-- Unit tests for blockchain contracts
+- Unit tests for blockchain contracts (Hardhat, Foundry, Truffle)
 - Frontend component tests
 - Integration tests
 - End-to-end tests (if configured)
 
 ### Security
 - NPM audit for dependency vulnerabilities
-- Secret detection in source code
+- Secret detection in source code with progress bars
 - Exposed API keys and private keys scanning
+- Custom security rules via plugins
 
 ### Build Verification
-- Frontend production build
+- Frontend production build with progress tracking
 - Smart contract compilation
 - Bundle size checks
+
+### Performance (Optional)
+- Load testing for large codebases
+- Bundle analysis
+- Custom performance metrics via plugins
+
+## Caching System
+
+The QA agent includes intelligent caching to speed up repeated runs:
+
+- **Result Caching**: Caches linting, testing, and build results for 24 hours
+- **File Hashing**: Uses MD5 hashing to detect file changes
+- **Selective Cache Invalidation**: Security checks always run fresh
+- **Cache Management**: Automatic cleanup of expired cache entries
 
 ## Output
 
 The QA agent generates:
 
-1. **Console Output**: Real-time progress and results
-2. **QA Log**: `docs/qalog.md` with detailed session logs
-3. **JSON Report**: `qa-report.json` with structured results
+1. **Console Output**: Real-time progress bars and colored results
+2. **QA Log**: `docs/qalog.md` with detailed session logs and timestamps
+3. **JSON Report**: `qa-report.json` with structured results for CI/CD
+4. **Plugin Reports**: Custom reports from loaded plugins
 
 ## Exit Codes
 
@@ -181,7 +339,7 @@ The QA agent generates:
 
 - Node.js >= 18.0.0
 - NPM or Bun package manager
-- For blockchain projects: Hardhat or similar tooling
+- For blockchain projects: Hardhat, Foundry, or Truffle
 - For frontend projects: Next.js, React, or similar
 
 ## Troubleshooting
@@ -210,6 +368,10 @@ The QA agent generates:
 - Install dependencies in subprojects (frontend/, blockchain/)
 - Check configuration in `.qa-config.json`
 
+**Caching issues:**
+- Clear cache: `rm -rf .qa-cache/`
+- Disable caching in config: `"caching": {"enabled": false}`
+
 ## Project Examples
 
 ### Hardhat Project
@@ -219,6 +381,7 @@ my-hardhat-project/
 ├── test/              # Contract tests
 ├── scripts/           # Deployment scripts
 ├── frontend/          # React/Next.js frontend
+├── .qa-config.json    # QA configuration
 └── package.json
 ```
 
@@ -233,6 +396,8 @@ my-fullstack-project/
 │   ├── contracts/
 │   ├── test/
 │   └── hardhat.config.js
+├── .qa-plugins/       # Custom QA plugins
+├── .github/workflows/ # CI/CD workflows
 └── package.json
 ```
 
@@ -243,6 +408,13 @@ my-fullstack-project/
 - **Enable pre-commit hooks** for immediate feedback on code quality
 - **Run regular updates** to get latest security checks and improvements
 - **Use dry-run mode** (`--dry-run`) for testing QA setup
+- **Configure caching** for faster repeated runs in development
+
+### For Teams
+- **Set up CI/CD pipelines** using provided templates
+- **Create custom plugins** for team-specific checks
+- **Configure notifications** for QA failures
+- **Use the QA log** for audit trails and debugging
 
 ### Version Management
 - Follows **semantic versioning** (MAJOR.MINOR.PATCH)

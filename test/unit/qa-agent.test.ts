@@ -75,7 +75,7 @@ describe('QAAgent', () => {
     });
 
     it('should redact private keys in logs', () => {
-      (agent as any).log('INFO', 'PRIVATE_KEY=0x123456789abcdef123456789abcdef123456789abcdef123456789abcdef');
+      (agent as any).log('INFO', 'PRIVATE_KEY=0x123456789abcdef123456789abcdef123456789abcdef123456789abcdef123456789abcdef12345678');
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('PRIVATE_KEY=[REDACTED]')
       );
