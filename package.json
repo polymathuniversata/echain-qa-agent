@@ -1,6 +1,6 @@
 {
   "name": "echain-qa-agent",
-  "version": "2.1.4",
+  "version": "2.1.5",
   "description": "Comprehensive QA automation for blockchain and web3 projects - ensures code quality, runs tests, and updates documentation",
   "main": "dist/index.js",
   "bin": {
