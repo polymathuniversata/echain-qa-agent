@@ -24,7 +24,8 @@
     "dev:qa": "./scripts/dev-with-qa.sh",
     "setup:hooks": "./scripts/setup-hooks.sh",
     "precommit": "echain-qa run --dry-run",
-    "prepush": "echain-qa run"
+    "prepush": "echain-qa run",
+    "postinstall": "bash ./node_modules/echain-qa-agent/scripts/setup-hooks.sh"
   },
   "keywords": [
     "qa",

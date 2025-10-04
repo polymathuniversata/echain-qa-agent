@@ -31,24 +31,25 @@ bun add -d echain-qa-agent
 
 ## Git Hooks Setup
 
-To automatically run QA checks on commits and pushes, install the git hooks:
+When you install the QA agent as a dev dependency (`npm install --save-dev echain-qa-agent`), the git hooks are automatically installed in your project.
 
-```bash
-# Run the setup script in your project
-bash scripts/setup-hooks.sh
-```
-
-This will install:
+The hooks include:
 - **pre-commit hook**: Runs fast QA checks (dry-run) before each commit
 - **pre-push hook**: Runs comprehensive QA checks before pushing to remote
+
+If you need to manually install or reinstall the hooks, run:
+
+```bash
+npm run setup:hooks
+# or
+bash scripts/setup-hooks.sh
+```
 
 The hooks will automatically install the QA agent if missing (requires npm/bun).
 
 To test the hooks:
 1. Make a small change to any file
 2. Run: `git add . && git commit -m 'test'`
-
-If QA checks fail, the commit/push will be blocked with details on how to fix issues.
 
 ### Command Line Interface
 
