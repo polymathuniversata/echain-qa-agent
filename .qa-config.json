@@ -1,0 +1,21 @@
+{
+  "version": "2.0.0",
+  "project": {
+    "name": "qa-agent-package",
+    "type": "blockchain",
+    "frameworks": []
+  },
+  "checks": {
+    "linting": true,
+    "testing": true,
+    "security": true,
+    "build": true,
+    "performance": false
+  },
+  "paths": {
+    "frontend": "frontend",
+    "blockchain": "blockchain",
+    "docs": "docs",
+    "tests": "test"
+  }
+}
