@@ -49,7 +49,12 @@ const qaConfigSchema = {
       properties: {
         preCommit: { type: 'boolean' },
         prePush: { type: 'boolean' },
-        autoInstall: { type: 'boolean' }
+        autoInstall: { type: 'boolean' },
+        wrapScripts: { type: 'boolean' },
+        scriptsToWrap: {
+          type: 'array',
+          items: { type: 'string' }
+        }
       }
     }
   },
@@ -59,6 +64,7 @@ const qaConfigSchema = {
 export interface QAAgentOptions {
   dryRun?: boolean;
   verbose?: boolean;
+  quiet?: boolean;
   projectRoot?: string;
 }
 
@@ -105,6 +111,7 @@ export class QAAgent {
     this.options = {
       dryRun: false,
       verbose: false,
+      quiet: false,
       projectRoot: process.cwd(),
       ...options
     };
@@ -124,7 +131,7 @@ export class QAAgent {
     const redactedMessage = this.redactSecrets(message);
     const logEntry = `| ${timestamp} | ${level} | ${redactedMessage} |`;
 
-    if (this.options.verbose || level === 'ERROR') {
+    if ((this.options.verbose || level === 'ERROR') && !this.options.quiet) {
       const color = level === 'ERROR' ? chalk.red :
                    level === 'WARNING' ? chalk.yellow :
                    level === 'SUCCESS' ? chalk.green : chalk.blue;
@@ -414,7 +421,9 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
         hooks: {
           preCommit: true,
           prePush: true,
-          autoInstall: true
+          autoInstall: true,
+          wrapScripts: false,
+          scriptsToWrap: ["build", "start", "dev", "test"]
         }
       };
       await writeFile(configPath, JSON.stringify(config, null, 2));
@@ -428,6 +437,11 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
         const isValid = await this.validateConfig(config);
         if (!isValid) {
           throw new Error('Configuration validation failed');
+        }
+
+        // Auto-wrap scripts if enabled
+        if (config.hooks && config.hooks.wrapScripts) {
+          await this.wrapScripts();
         }
       } catch (error) {
         this.log('ERROR', `Configuration validation error: ${error}`);
@@ -1076,6 +1090,104 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
     }
 
     this.log('SUCCESS', 'Git hooks setup completed');
+  }
+
+  async wrapScripts(): Promise<void> {
+    this.log('INFO', 'Wrapping npm scripts with QA checks...');
+
+    const packageJsonPath = path.join(this.projectRoot, 'package.json');
+    if (!await pathExists(packageJsonPath)) {
+      throw new Error('package.json not found');
+    }
+
+    const packageJsonContent = await readFile(packageJsonPath, 'utf-8');
+    const packageJson = JSON.parse(packageJsonContent);
+
+    if (!packageJson.scripts) {
+      this.log('WARNING', 'No scripts found in package.json');
+      return;
+    }
+
+    // Load config to see which scripts to wrap
+    const configPath = path.join(this.projectRoot, '.qa-config.json');
+    let scriptsToWrap = ['build', 'start', 'dev', 'test'];
+
+    if (await pathExists(configPath)) {
+      try {
+        const configContent = await readFile(configPath, 'utf-8');
+        const config = JSON.parse(configContent);
+        if (config.hooks && config.hooks.scriptsToWrap) {
+          scriptsToWrap = config.hooks.scriptsToWrap;
+        }
+      } catch (error) {
+        this.log('WARNING', 'Could not read QA config, using defaults');
+      }
+    }
+
+    let wrappedCount = 0;
+    for (const scriptName of scriptsToWrap) {
+      if (packageJson.scripts[scriptName]) {
+        const originalScript = packageJson.scripts[scriptName];
+
+        // Skip if already wrapped
+        if (originalScript.includes('echain-qa run')) {
+          this.log('INFO', `Script '${scriptName}' already wrapped`);
+          continue;
+        }
+
+        // Wrap the script
+        const wrappedScript = `npx echain-qa run --dry-run --quiet && ${originalScript}`;
+        packageJson.scripts[scriptName] = wrappedScript;
+
+        this.log('SUCCESS', `Wrapped script '${scriptName}'`);
+        wrappedCount++;
+      }
+    }
+
+    if (wrappedCount > 0) {
+      await writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+      this.log('SUCCESS', `Wrapped ${wrappedCount} scripts with QA checks`);
+    } else {
+      this.log('INFO', 'No scripts needed wrapping');
+    }
+  }
+
+  async unwrapScripts(): Promise<void> {
+    this.log('INFO', 'Unwrapping npm scripts...');
+
+    const packageJsonPath = path.join(this.projectRoot, 'package.json');
+    if (!await pathExists(packageJsonPath)) {
+      throw new Error('package.json not found');
+    }
+
+    const packageJsonContent = await readFile(packageJsonPath, 'utf-8');
+    const packageJson = JSON.parse(packageJsonContent);
+
+    if (!packageJson.scripts) {
+      this.log('WARNING', 'No scripts found in package.json');
+      return;
+    }
+
+    let unwrappedCount = 0;
+    for (const scriptName in packageJson.scripts) {
+      const script = packageJson.scripts[scriptName];
+
+      if (script.includes('npx echain-qa run --dry-run --quiet && ')) {
+        // Unwrap the script
+        const originalScript = script.replace('npx echain-qa run --dry-run --quiet && ', '');
+        packageJson.scripts[scriptName] = originalScript;
+
+        this.log('SUCCESS', `Unwrapped script '${scriptName}'`);
+        unwrappedCount++;
+      }
+    }
+
+    if (unwrappedCount > 0) {
+      await writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+      this.log('SUCCESS', `Unwrapped ${unwrappedCount} scripts`);
+    } else {
+      this.log('INFO', 'No wrapped scripts found');
+    }
   }
 
   private async generateUnixHooks(hooksDir: string): Promise<void> {

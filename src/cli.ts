@@ -22,10 +22,12 @@ program
   .description('Run full QA suite')
   .option('-d, --dry-run', 'simulate QA checks without actual execution')
   .option('-v, --verbose', 'enable verbose output')
+  .option('-q, --quiet', 'suppress non-error output for script wrapping')
   .action(async (options) => {
     const agent = new QAAgent({
       dryRun: options.dryRun,
-      verbose: options.verbose
+      verbose: options.verbose,
+      quiet: options.quiet
     });
 
     try {
@@ -120,6 +122,35 @@ program
       console.log('Hooks will run QA checks on commit and push');
     } catch (error) {
       console.error(chalk.red('❌ Hook setup failed:'), error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('wrap-scripts')
+  .description('Wrap npm scripts with QA checks')
+  .action(async () => {
+    const agent = new QAAgent();
+    try {
+      await agent.wrapScripts();
+      console.log(chalk.green('✅ Scripts wrapped successfully'));
+      console.log('QA checks will run before build, start, dev, and test commands');
+    } catch (error) {
+      console.error(chalk.red('❌ Script wrapping failed:'), error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('unwrap-scripts')
+  .description('Remove QA checks from wrapped npm scripts')
+  .action(async () => {
+    const agent = new QAAgent();
+    try {
+      await agent.unwrapScripts();
+      console.log(chalk.green('✅ Scripts unwrapped successfully'));
+    } catch (error) {
+      console.error(chalk.red('❌ Script unwrapping failed:'), error);
       process.exit(1);
     }
   });

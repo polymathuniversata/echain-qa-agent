@@ -17,5 +17,17 @@
     "blockchain": "blockchain",
     "docs": "docs",
     "tests": "test"
+  },
+  "hooks": {
+    "preCommit": true,
+    "prePush": true,
+    "autoInstall": true,
+    "wrapScripts": true,
+    "scriptsToWrap": [
+      "build",
+      "start",
+      "dev",
+      "test"
+    ]
   }
 }

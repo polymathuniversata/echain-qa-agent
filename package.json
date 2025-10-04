@@ -8,9 +8,9 @@
   },
   "type": "commonjs",
   "scripts": {
-    "build": "tsc",
-    "dev": "ts-node src/cli.ts",
-    "test": "jest",
+    "build": "node dist/cli.js run --dry-run --quiet && tsc",
+    "dev": "node dist/cli.js run --dry-run --quiet && ts-node src/cli.ts",
+    "test": "node dist/cli.js run --dry-run --quiet && jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:qa": "npm run build && node dist/cli.js run --verbose",
@@ -26,7 +26,7 @@
     "qa:ci": "./scripts/ci-pipeline.sh",
     "dev:qa": "./scripts/dev-with-qa.sh",
     "setup:hooks": "./scripts/setup-hooks.sh",
-    "postinstall": "echo '\\n🛡️ QA Agent installed! Run \"npx echain-qa setup-hooks\" to enable automatic git hooks.\\n'"
+    "postinstall": "node -e \"const fs=require('fs');const path=require('path');const projectRoot=path.resolve('../../../');if(fs.existsSync(path.join(projectRoot,'.git'))){console.log('\\n🛡️ Auto-setting up QA git hooks...');process.chdir(projectRoot);require('child_process').execSync('npx echain-qa setup-hooks',{stdio:'inherit'});}else{console.log('\\n🛡️ QA Agent installed! For automatic git hooks, run \\\"echain-qa setup-hooks\\\" in your project directory.');}\""
   },
   "keywords": [
     "qa",

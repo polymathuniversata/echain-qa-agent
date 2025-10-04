@@ -32,15 +32,9 @@ A comprehensive QA automation tool designed specifically for blockchain and Web3
 
 ## Installation
 
-### Global Installation (Recommended)
+### Local Installation (Recommended for Projects)
 
-```bash
-npm install -g echain-qa-agent
-# or
-bun add -g echain-qa-agent
-```
-
-### Local Installation
+For automatic git hook setup in your project:
 
 ```bash
 npm install --save-dev echain-qa-agent
@@ -48,16 +42,32 @@ npm install --save-dev echain-qa-agent
 bun add -d echain-qa-agent
 ```
 
+*Git hooks will be automatically installed after installation.*
+
+### Global Installation
+
+For system-wide usage:
+
+```bash
+npm install -g echain-qa-agent
+# or
+bun add -g echain-qa-agent
+```
+
+*Run `echain-qa setup-hooks` in your project directory to enable automatic git hooks.*
+
 ## Quick Start
 
-1. **Install the QA agent**:
+1. **Install the QA agent locally** (recommended):
    ```bash
    npm install --save-dev echain-qa-agent
    ```
+   *Git hooks are automatically set up!*
 
-2. **Initialize QA configuration**:
+2. **Or install globally and set up hooks manually**:
    ```bash
-   npx echain-qa init
+   npm install -g echain-qa-agent
+   npx echain-qa setup-hooks
    ```
 
 3. **Run your first QA check**:
@@ -89,28 +99,34 @@ To test the hooks:
 
 The QA agent will automatically run checks before your commit!
 
-### Bypassing QA Checks
+### Script Wrapping
 
-As a developer working on the QA agent itself, you may need to bypass checks during development:
+The QA agent can automatically wrap your npm scripts to run QA checks before common development commands.
 
-#### Environment Variable Bypass
+To wrap scripts automatically:
 ```bash
-# Skip QA checks for commit
-SKIP_QA_CHECKS=1 git commit -m "your message"
-
-# Skip QA checks for push
-SKIP_QA_CHECKS=1 git push origin main
+npx echain-qa wrap-scripts
 ```
 
-#### Commit Message Tag Bypass
-Add one of these tags to your commit message:
+This will modify scripts like `build`, `start`, `dev`, and `test` in your `package.json` to run QA checks first.
+
+For example:
+- `"build": "webpack"` becomes `"build": "echain-qa run --dry-run --quiet && webpack"`
+
+To remove the wrapping:
 ```bash
-git commit -m "feat: new feature [skip.qa]"
-git commit -m "fix: bug fix [no.qa]"
-git commit -m "refactor: code cleanup [bypass.qa]"
+npx echain-qa unwrap-scripts
 ```
 
-The pre-push hook will also check recent commits for skip tags.
+Configure which scripts to wrap in `.qa-config.json`:
+```json
+{
+  "hooks": {
+    "wrapScripts": true,
+    "scriptsToWrap": ["build", "start", "dev", "deploy"]
+  }
+}
+```
 
 ### Version Checking
 
@@ -149,8 +165,26 @@ echain-qa build
 # Initialize QA configuration
 echain-qa init
 
+# Set up git hooks
+echain-qa setup-hooks
+
+# Wrap npm scripts with QA checks
+echain-qa wrap-scripts
+
+# Remove QA checks from scripts
+echain-qa unwrap-scripts
+
+# Check hook status
+echain-qa check-hooks
+
+# Remove hooks
+echain-qa remove-hooks
+
 # Run with dry-run mode (no actual changes)
 echain-qa run --dry-run
+
+# Quiet mode (for script wrapping)
+echain-qa run --quiet
 
 # Verbose output
 echain-qa run --verbose
