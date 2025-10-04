@@ -3,13 +3,19 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { QAAgent } from './qa-agent';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+// Read version from package.json
+const packageJson = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
+const version = packageJson.version;
 
 const program = new Command();
 
 program
   .name('echain-qa')
   .description('🛡️ Echain Quality Assurance Agent - Comprehensive QA automation for blockchain projects')
-  .version('2.0.0');
+  .version(version);
 
 program
   .command('run')
