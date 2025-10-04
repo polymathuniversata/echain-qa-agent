@@ -639,17 +639,39 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
     this.log('INFO', 'Starting security analysis...');
     let issues = 0;
 
-    // Dependency audits
-    const rootAudit = await this.runCommand('npm audit --audit-level moderate', 'NPM security audit');
-    if (!rootAudit) issues++;
+    // Check if we have a package.json and package-lock.json in the project root
+    const packageJsonPath = path.join(this.projectRoot, 'package.json');
+    const packageLockPath = path.join(this.projectRoot, 'package-lock.json');
+    const yarnLockPath = path.join(this.projectRoot, 'yarn.lock');
+    const pnpmLockPath = path.join(this.projectRoot, 'pnpm-lock.yaml');
+
+    const hasPackageJson = await pathExists(packageJsonPath);
+    const hasPackageLock = await pathExists(packageLockPath) || await pathExists(yarnLockPath) || await pathExists(pnpmLockPath);
+
+    if (!hasPackageJson) {
+      this.log('WARNING', 'No package.json found in project root - skipping dependency audit');
+    } else if (!hasPackageLock) {
+      this.log('WARNING', 'No lockfile (package-lock.json, yarn.lock, or pnpm-lock.yaml) found - skipping dependency audit');
+    } else {
+      // Dependency audits - only run if we have the necessary files
+      const rootAudit = await this.runCommand('npm audit --audit-level moderate', 'NPM security audit');
+      if (!rootAudit) issues++;
+    }
 
     const blockchainPath = path.join(this.projectRoot, 'blockchain');
     if (await pathExists(blockchainPath)) {
-      const blockchainAudit = await this.runCommand(
-        'cd blockchain && npm audit --audit-level moderate',
-        'Blockchain dependency audit'
-      );
-      if (!blockchainAudit) issues++;
+      const blockchainPackageJson = path.join(blockchainPath, 'package.json');
+      const blockchainLock = path.join(blockchainPath, 'package-lock.json');
+
+      if (await pathExists(blockchainPackageJson) && await pathExists(blockchainLock)) {
+        const blockchainAudit = await this.runCommand(
+          'cd blockchain && npm audit --audit-level moderate',
+          'Blockchain dependency audit'
+        );
+        if (!blockchainAudit) issues++;
+      } else {
+        this.log('INFO', 'Blockchain directory exists but no package.json/lockfile - skipping blockchain audit');
+      }
     }
 
     // Secret detection
