@@ -1,0 +1,109 @@
+name: QA Agent CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      strict_mode:
+        description: 'Run in strict mode (fail on any warnings)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  qa-checks:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install QA Agent
+      run: npm install --save-dev @echain/qa-agent
+
+    - name: Initialize QA configuration
+      run: npx echain-qa init
+
+    - name: Run QA Agent (Linting)
+      run: npx echain-qa lint
+      continue-on-error: ${{ github.event.inputs.strict_mode != 'true' }}
+
+    - name: Run QA Agent (Security)
+      run: npx echain-qa security
+      continue-on-error: ${{ github.event.inputs.strict_mode != 'true' }}
+
+    - name: Run QA Agent (Build)
+      run: npx echain-qa build
+      continue-on-error: ${{ github.event.inputs.strict_mode != 'true' }}
+
+    - name: Run QA Agent (Tests)
+      run: npx echain-qa test
+      continue-on-error: ${{ github.event.inputs.strict_mode != 'true' }}
+
+    - name: Run Full QA Suite
+      run: npx echain-qa run
+      continue-on-error: ${{ github.event.inputs.strict_mode != 'true' }}
+
+    - name: Upload QA Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: qa-report-${{ matrix.node-version }}
+        path: qa-report.json
+
+    - name: Upload QA Logs
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: qa-logs-${{ matrix.node-version }}
+        path: docs/qalog.md
+
+  # Optional: Test with Bun runtime
+  qa-checks-bun:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
+
+    - name: Install dependencies with Bun
+      run: bun install
+
+    - name: Install QA Agent with Bun
+      run: bun add -d @echain/qa-agent
+
+    - name: Initialize QA configuration
+      run: bunx echain-qa init
+
+    - name: Run QA Agent with Bun
+      run: bunx echain-qa run
+
+    - name: Upload QA Report (Bun)
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: qa-report-bun
+        path: qa-report.json
