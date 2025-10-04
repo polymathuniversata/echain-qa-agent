@@ -1,6 +1,6 @@
 {
   "name": "echain-qa-agent",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Comprehensive QA automation for blockchain and web3 projects - ensures code quality, runs tests, and updates documentation",
   "main": "dist/index.js",
   "bin": {
@@ -27,8 +27,7 @@
     "dev:qa": "./scripts/dev-with-qa.sh",
     "setup:hooks": "./scripts/setup-hooks.sh",
     "precommit": "echain-qa run --dry-run",
-    "prepush": "echain-qa run",
-    "postinstall": "bash ./node_modules/echain-qa-agent/scripts/setup-hooks.sh"
+    "prepush": "echain-qa run"
   },
   "keywords": [
     "qa",
@@ -71,7 +70,7 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^20.10.0",
     "bun-types": "^1.0.0",
-    "echain-qa-agent": "^2.1.0",
+    "echain-qa-agent": "^2.1.1",
     "eslint": "^8.55.0",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.4",
