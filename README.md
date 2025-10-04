@@ -87,6 +87,36 @@ To test the hooks:
 1. Make a small change to any file
 2. Run: `git add . && git commit -m 'test'`
 
+### Bypassing QA Checks
+
+As a developer working on the QA agent itself, you may need to bypass checks during development:
+
+#### Environment Variable Bypass
+```bash
+# Skip QA checks for commit
+SKIP_QA_CHECKS=1 git commit -m "your message"
+
+# Skip QA checks for push
+SKIP_QA_CHECKS=1 git push origin main
+```
+
+#### Commit Message Tag Bypass
+Add one of these tags to your commit message:
+```bash
+git commit -m "feat: new feature [skip.qa]"
+git commit -m "fix: bug fix [no.qa]"
+git commit -m "refactor: code cleanup [bypass.qa]"
+```
+
+The pre-push hook will also check recent commits for skip tags.
+
+### Version Checking
+
+The hooks automatically check if you're using the latest version of the QA agent:
+- Compares your installed version with the latest on npm
+- Warns if a newer version is available
+- Suggests update commands but doesn't block commits/pushes
+
 ### Cross-Platform Support
 
 The QA agent includes enhanced cross-platform support:
