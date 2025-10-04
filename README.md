@@ -439,4 +439,4 @@ MIT License - see LICENSE file for details.
 
 - 📧 Email: support@echain.dev
 - 🐛 Issues: [GitHub Issues](https://github.com/polymathuniversata/echain-qa-agent/issues)
-- 📖 Docs: [Full Documentation](https://docs.echain.dev/qa-agent)
+- 📖 Docs: [Full Documentation](https://docs.echain.dev/qa-agent)# Test bypass functionality
