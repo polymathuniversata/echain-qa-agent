@@ -54,7 +54,7 @@ npm install -g echain-qa-agent
 bun add -g echain-qa-agent
 ```
 
-*Run `echain-qa setup-hooks` in your project directory to enable automatic git hooks.*
+*Run `echain-qa setup-hooks` or `echain setup-hooks` in your project directory to enable automatic git hooks.*
 
 ## Quick Start
 
@@ -111,7 +111,7 @@ npx echain-qa wrap-scripts
 This will modify scripts like `build`, `start`, `dev`, and `test` in your `package.json` to run QA checks first.
 
 For example:
-- `"build": "webpack"` becomes `"build": "echain-qa run --dry-run --quiet && webpack"`
+- `"build": "webpack"` becomes `"build": "echain-qa run --dry-run --quiet && webpack"` (or use `echain run --dry-run --quiet`)
 
 To remove the wrapping:
 ```bash
@@ -144,7 +144,7 @@ The QA agent includes enhanced cross-platform support:
 
 ## Command Line Interface
 
-After global installation, use the `echain-qa` command:
+After global installation, use the `echain-qa` or `echain` command:
 
 ```bash
 # Run full QA suite (with progress bars and caching)
