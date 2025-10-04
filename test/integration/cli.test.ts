@@ -42,7 +42,7 @@ describe('CLI Integration Tests', () => {
       const result = await runCLI(['--version']);
 
       expect(result.code).toBe(0);
-      expect(result.stdout).toContain('2.0.0');
+      expect(result.stdout).toContain('2.1.3');
     });
 
     it('should handle init command', async () => {
