@@ -48,7 +48,28 @@ if [ -f "$PROJECT_ROOT/package.json" ]; then
 
         echo "✅ QA checks passed"
     else
-        echo "⚠️  QA agent not found. Install with: npm install --save-dev @echain/qa-agent"
+        echo "⚠️  QA agent not found. Attempting to install..."
+        if command -v npm &> /dev/null; then
+            cd "$PROJECT_ROOT"
+            npm install --save-dev @echain/qa-agent
+            if [ $? -eq 0 ]; then
+                echo "✅ QA agent installed. Running checks..."
+                if [ -f "$PROJECT_ROOT/node_modules/.bin/echain-qa" ]; then
+                    "$PROJECT_ROOT/node_modules/.bin/echain-qa" run --dry-run --verbose
+                fi
+                if [ $? -ne 0 ]; then
+                    echo "❌ QA checks failed. Please fix issues before committing."
+                    exit 1
+                fi
+                echo "✅ QA checks passed"
+            else
+                echo "❌ Failed to install QA agent. Please install manually: npm install --save-dev @echain/qa-agent"
+                exit 1
+            fi
+        else
+            echo "❌ npm not found. Please install QA agent manually: npm install --save-dev @echain/qa-agent"
+            exit 1
+        fi
     fi
 fi
 
@@ -89,7 +110,28 @@ if [ -f "$PROJECT_ROOT/package.json" ]; then
 
         echo "✅ All QA checks passed - ready for push!"
     else
-        echo "⚠️  QA agent not found. Install with: npm install --save-dev @echain/qa-agent"
+        echo "⚠️  QA agent not found. Attempting to install..."
+        if command -v npm &> /dev/null; then
+            cd "$PROJECT_ROOT"
+            npm install --save-dev @echain/qa-agent
+            if [ $? -eq 0 ]; then
+                echo "✅ QA agent installed. Running checks..."
+                if [ -f "$PROJECT_ROOT/node_modules/.bin/echain-qa" ]; then
+                    "$PROJECT_ROOT/node_modules/.bin/echain-qa" run --verbose
+                fi
+                if [ $? -ne 0 ]; then
+                    echo "❌ QA checks failed. Please fix critical issues before pushing."
+                    exit 1
+                fi
+                echo "✅ All QA checks passed - ready for push!"
+            else
+                echo "❌ Failed to install QA agent. Please install manually: npm install --save-dev @echain/qa-agent"
+                exit 1
+            fi
+        else
+            echo "❌ npm not found. Please install QA agent manually: npm install --save-dev @echain/qa-agent"
+            exit 1
+        fi
     fi
 fi
 
