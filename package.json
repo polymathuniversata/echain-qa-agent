@@ -9,9 +9,9 @@
   },
   "type": "commonjs",
   "scripts": {
-    "build": "node dist/cli.js run --dry-run --quiet && tsc",
-    "dev": "node dist/cli.js run --dry-run --quiet && ts-node src/cli.ts",
-    "test": "node dist/cli.js run --dry-run --quiet && jest",
+    "build": "npx echain-qa run --dry-run --quiet && tsc && node dist/cli.js run --dry-run --quiet",
+    "dev": "npx echain-qa run --dry-run --quiet && node dist/cli.js run --dry-run --quiet && ts-node src/cli.ts",
+    "test": "npx echain-qa run --dry-run --quiet && node dist/cli.js run --dry-run --quiet && jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:qa": "npm run build && node dist/cli.js run --verbose",
@@ -61,19 +61,21 @@
     "commander": "^12.0.0",
     "fs-extra": "^11.2.0",
     "glob": "^10.3.10",
-    "inquirer": "^9.2.12"
+    "inquirer": "^9.3.8"
   },
   "devDependencies": {
     "@types/cli-progress": "^3.11.6",
     "@types/fs-extra": "^11.0.4",
     "@types/glob": "^8.1.0",
+    "@types/inquirer": "^9.0.9",
     "@types/jest": "^30.0.0",
-    "@types/node": "^20.10.0",
+    "@types/node": "^20.19.19",
     "bun-types": "^1.0.0",
     "echain-qa-agent": "^2.1.4",
     "eslint": "^8.55.0",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.4",
+    "typedoc": "^0.28.13",
     "typescript": "^5.3.0"
   },
   "peerDependencies": {

@@ -6,6 +6,11 @@
 
 A comprehensive QA automation tool designed specifically for blockchain and Web3 projects. This package provides automated code quality checks, testing, security scanning, and documentation updates to ensure your project maintains high standards.
 
+
+## 📚 Documentation
+
+API documentation is automatically generated and available in [`docs/api`](E:\Polymath Universata\EchainQaAgent\docs\api/).
+
 ## ✨ New in v2.1.0
 
 - 🚀 **Progress Indicators**: Visual progress bars for all long-running operations
@@ -243,6 +248,16 @@ Create a `.qa-config.json` file in your project root to customize behavior:
     "build": true,
     "performance": false
   },
+  "qualityGates": {
+    "failOnLintErrors": true,
+    "failOnTestFailures": true,
+    "failOnBuildFailures": true,
+    "failOnSecurityVulnerabilities": false,
+    "failOnPerformanceIssues": false,
+    "requireTests": false,
+    "requireTestCoverage": false,
+    "minTestCoverage": 80
+  },
   "caching": {
     "enabled": true,
     "ttlHours": 24
@@ -265,6 +280,15 @@ Create a `.qa-config.json` file in your project root to customize behavior:
   }
 }
 ```
+
+### Quality Gates Configuration
+
+The `qualityGates` section allows you to configure stricter quality requirements:
+
+- `requireTests`: Set to `true` to fail QA if no tests are found
+- `requireTestCoverage`: Set to `true` to enforce minimum test coverage
+- `minTestCoverage`: Minimum test coverage percentage (requires coverage reports)
+- `failOnSecurityVulnerabilities`: Treat security issues as errors instead of warnings
 
 ## Plugin System
 
@@ -356,10 +380,11 @@ pipeline {
 - Code formatting verification
 
 ### Testing
+- **Runs existing tests only** - no enforcement of test coverage or presence
 - Unit tests for blockchain contracts (Hardhat, Foundry, Truffle)
-- Frontend component tests
-- Integration tests
-- End-to-end tests (if configured)
+- Frontend component tests (if configured)
+- Integration tests (if `scripts/run_all_tests.sh` exists)
+- **Note**: Projects can pass QA without any tests
 
 ### Security
 - NPM audit for dependency vulnerabilities
@@ -372,10 +397,109 @@ pipeline {
 - Smart contract compilation
 - Bundle size checks
 
-### Performance (Optional)
-- Load testing for large codebases
-- Bundle analysis
-- Custom performance metrics via plugins
+### Quality Assurance Gaps
+- **No test coverage validation** - doesn't require minimum test coverage
+- **No error handling checks** - doesn't validate exception handling patterns
+- **No code complexity analysis** - doesn't enforce complexity limits
+- **No documentation requirements** - doesn't validate docstring coverage
+
+## Extending QA Coverage
+
+For comprehensive quality assurance, extend the QA agent with custom plugins:
+
+### Test Coverage Plugin
+```typescript
+// .qa-plugins/test-coverage.js
+const { execSync } = require('child_process');
+
+module.exports = {
+  name: 'test-coverage-validator',
+  description: 'Validates minimum test coverage requirements',
+
+  async run(context) {
+    const issues = [];
+    
+    // Check if test coverage report exists
+    try {
+      const coverage = JSON.parse(
+        require('fs').readFileSync('coverage/coverage-summary.json', 'utf8')
+      );
+      
+      const minCoverage = 80; // 80% minimum
+      
+      if (coverage.total.lines.pct < minCoverage) {
+        issues.push({
+          file: 'coverage/coverage-summary.json',
+          message: `Test coverage ${coverage.total.lines.pct}% below minimum ${minCoverage}%`,
+          severity: 'error'
+        });
+      }
+    } catch (error) {
+      issues.push({
+        file: 'coverage/',
+        message: 'Test coverage report not found - run tests with coverage',
+        severity: 'warning'
+      });
+    }
+
+    return { 
+      errors: issues.filter(i => i.severity === 'error').length, 
+      warnings: issues.filter(i => i.severity === 'warning').length, 
+      issues 
+    };
+  }
+};
+```
+
+### Error Handling Plugin
+```typescript
+// .qa-plugins/error-handling.js
+const fs = require('fs');
+const path = require('path');
+
+module.exports = {
+  name: 'error-handling-validator',
+  description: 'Validates error handling patterns in source code',
+
+  async run(context) {
+    const issues = [];
+    
+    // Scan TypeScript/JavaScript files for error handling
+    const files = await context.glob('src/**/*.{ts,js}');
+    
+    for (const file of files) {
+      const content = await context.readFile(file);
+      const lines = content.split('\n');
+      
+      // Check for async functions without try-catch
+      const asyncFunctions = content.match(/async\s+\w+\s*\([^)]*\)\s*{/g) || [];
+      const tryCatchBlocks = (content.match(/try\s*{/g) || []).length;
+      
+      if (asyncFunctions.length > tryCatchBlocks) {
+        issues.push({
+          file,
+          message: 'Async function detected without corresponding try-catch block',
+          severity: 'warning'
+        });
+      }
+      
+      // Check for Promise usage without error handling
+      const promises = content.match(/\.then\(/g) || [];
+      const catches = content.match(/\.catch\(/g) || [];
+      
+      if (promises.length > catches.length) {
+        issues.push({
+          file,
+          message: 'Promise chain detected without error handling (.catch)',
+          severity: 'warning'
+        });
+      }
+    }
+
+    return { errors: 0, warnings: issues.length, issues };
+  }
+};
+```
 
 ## Caching System
 

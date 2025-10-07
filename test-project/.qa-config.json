@@ -1,0 +1,49 @@
+{
+  "version": "2.2.0",
+  "project": {
+    "name": "test-project",
+    "type": "frontend",
+    "frameworks": []
+  },
+  "checks": {
+    "linting": true,
+    "testing": true,
+    "security": true,
+    "build": true,
+    "performance": true
+  },
+  "paths": {
+    "frontend": "frontend",
+    "blockchain": "blockchain",
+    "docs": "docs",
+    "tests": "test"
+  },
+  "hooks": {
+    "preCommit": true,
+    "prePush": true,
+    "autoInstall": true,
+    "wrapScripts": true,
+    "scriptsToWrap": [
+      "build",
+      "start",
+      "dev",
+      "test"
+    ]
+  },
+  "timeouts": {
+    "lint": 300,
+    "test": 600,
+    "build": 300,
+    "security": 120
+  },
+  "qualityGates": {
+    "failOnLintErrors": true,
+    "failOnTestFailures": true,
+    "failOnBuildFailures": true,
+    "failOnSecurityVulnerabilities": true,
+    "failOnPerformanceIssues": false,
+    "requireTests": true,
+    "requireTestCoverage": false,
+    "minTestCoverage": 80
+  }
+}

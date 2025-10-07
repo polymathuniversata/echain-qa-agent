@@ -115,6 +115,63 @@ describe('QAAgent', () => {
         path.join(mockProjectRoot, '.qa-config.json'),
         expect.stringContaining('"version": "2.0.0"')
       );
+      expect(fsExtra.writeFile).toHaveBeenCalledWith(
+        path.join(mockProjectRoot, '.qa-config.json'),
+        expect.stringContaining('"requireTests": false')
+      );
+      expect(fsExtra.writeFile).toHaveBeenCalledWith(
+        path.join(mockProjectRoot, '.qa-config.json'),
+        expect.stringContaining('"minTestCoverage": 80')
+      );
+    });
+  });
+
+  describe('quality gates', () => {
+    const fsExtra = require('fs-extra');
+    const glob = require('glob');
+
+    it('should detect test files via collectTestFiles', () => {
+      (glob.globSync as jest.Mock).mockImplementation((pattern: unknown) => {
+        if (pattern === '**/*.test.{js,jsx,ts,tsx,cjs,mjs}') {
+          return ['src/example.test.ts'];
+        }
+        return [];
+      });
+
+      const files = (agent as any).collectTestFiles({ paths: { tests: 'test' } });
+      expect(files).toEqual(['src/example.test.ts']);
+    });
+
+    it('should fail coverage enforcement when below threshold', async () => {
+      fsExtra.pathExists.mockResolvedValue(true);
+      fsExtra.readFile.mockResolvedValue(JSON.stringify({
+        total: {
+          lines: { pct: 70 },
+          statements: { pct: 72 },
+          branches: { pct: 68 },
+          functions: { pct: 69 }
+        }
+      }));
+
+      await expect((agent as any).enforceTestCoverageRequirement({
+        qualityGates: { minTestCoverage: 80 }
+      })).rejects.toThrow('Coverage 68.00% is below required 80% threshold.');
+    });
+
+    it('should pass coverage enforcement when threshold is met', async () => {
+      fsExtra.pathExists.mockResolvedValue(true);
+      fsExtra.readFile.mockResolvedValue(JSON.stringify({
+        total: {
+          lines: { pct: 90 },
+          statements: { pct: 92 },
+          branches: { pct: 88 },
+          functions: { pct: 91 }
+        }
+      }));
+
+      await expect((agent as any).enforceTestCoverageRequirement({
+        qualityGates: { minTestCoverage: 80 }
+      })).resolves.toBe(88);
     });
   });
 

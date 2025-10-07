@@ -106,6 +106,7 @@ export class QAAgent {
   private cache: QACache;
   private pluginsPath: string;
   private plugins: Map<string, QAPlugin>;
+  private pluginConfigs: { [key: string]: any };
 
   constructor(options: QAAgentOptions = {}) {
     this.options = {
@@ -124,6 +125,7 @@ export class QAAgent {
     this.cache = {};
     this.pluginsPath = path.join(this.projectRoot, '.qa-plugins');
     this.plugins = new Map();
+    this.pluginConfigs = {};
   }
 
   private log(level: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR', message: string): void {
@@ -253,7 +255,23 @@ export class QAAgent {
     return true;
   }
 
-  private async loadPlugins(): Promise<void> {
+  private async loadQaConfig(): Promise<any | null> {
+    const configPath = path.join(this.projectRoot, '.qa-config.json');
+
+    if (!await pathExists(configPath)) {
+      return null;
+    }
+
+    try {
+      const configContent = await readFile(configPath, 'utf-8');
+      return JSON.parse(configContent);
+    } catch (error) {
+      this.log('ERROR', `Failed to load QA configuration: ${error}`);
+      throw error;
+    }
+  }
+
+  async loadPlugins(): Promise<void> {
     try {
       if (!await pathExists(this.pluginsPath)) {
         return; // No plugins directory
@@ -424,6 +442,16 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
           autoInstall: true,
           wrapScripts: false,
           scriptsToWrap: ["build", "start", "dev", "test"]
+        },
+        qualityGates: {
+          failOnLintErrors: true,
+          failOnTestFailures: true,
+          failOnBuildFailures: true,
+          failOnSecurityVulnerabilities: true,
+          failOnPerformanceIssues: false,
+          requireTests: false,
+          requireTestCoverage: false,
+          minTestCoverage: 80
         }
       };
       await writeFile(configPath, JSON.stringify(config, null, 2));
@@ -452,7 +480,7 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
     this.log('SUCCESS', 'QA configuration initialized');
   }
 
-  async runLinting(autoFix = false): Promise<void> {
+  async runLinting(autoFix = false, config?: any): Promise<void> {
     this.log('INFO', 'Starting code quality checks...');
 
     // Frontend linting
@@ -462,13 +490,25 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
         `cd frontend && npm run lint${autoFix ? ' -- --fix' : ''}`,
         'Frontend ESLint'
       );
-      if (!success) throw new Error('Frontend linting failed');
+      if (!success) {
+        if (config?.qualityGates?.failOnLintErrors !== false) {
+          throw new Error('Frontend linting failed');
+        } else {
+          this.log('WARNING', 'Frontend linting failed but continuing due to configuration');
+        }
+      }
 
       const tsSuccess = await this.runCommand(
         'cd frontend && npm run type-check',
         'Frontend TypeScript check'
       );
-      if (!tsSuccess) throw new Error('TypeScript compilation failed');
+      if (!tsSuccess) {
+        if (config?.qualityGates?.failOnLintErrors !== false) {
+          throw new Error('TypeScript compilation failed');
+        } else {
+          this.log('WARNING', 'TypeScript compilation failed but continuing due to configuration');
+        }
+      }
     }
 
     // Blockchain linting - detect framework
@@ -482,7 +522,13 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
             'cd blockchain && npm run fix:eslint',
             'Blockchain ESLint (Hardhat)'
           );
-          if (!hardhatLintSuccess) throw new Error('Blockchain ESLint failed');
+          if (!hardhatLintSuccess) {
+            if (config?.qualityGates?.failOnLintErrors !== false) {
+              throw new Error('Blockchain ESLint failed');
+            } else {
+              this.log('WARNING', 'Blockchain ESLint failed but continuing due to configuration');
+            }
+          }
 
           // Solidity checks for Hardhat
           await this.runCommand(
@@ -518,7 +564,13 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
             'cd blockchain && npm run lint',
             'Blockchain ESLint (Truffle)'
           );
-          if (!truffleLintSuccess) throw new Error('Blockchain ESLint failed');
+          if (!truffleLintSuccess) {
+            if (config?.qualityGates?.failOnLintErrors !== false) {
+              throw new Error('Blockchain ESLint failed');
+            } else {
+              this.log('WARNING', 'Blockchain ESLint failed but continuing due to configuration');
+            }
+          }
 
           // Solidity checks for Truffle
           const truffleSolHintSuccess = await this.runCommand(
@@ -974,6 +1026,25 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
     let totalErrors = 0;
     let totalWarnings = 0;
 
+    let config: any = null;
+    try {
+      config = await this.loadQaConfig();
+    } catch (error) {
+      this.log('WARNING', 'Proceeding without QA configuration due to load error');
+    }
+
+    const qualityGates = config?.qualityGates ?? {};
+    const testFiles = this.collectTestFiles(config);
+
+    if (qualityGates.requireTests) {
+      if (testFiles.length === 0) {
+        totalErrors++;
+        this.log('ERROR', 'Quality gate failed: requireTests is enabled but no test files were found.');
+      } else {
+        this.log('SUCCESS', `Quality gate passed: detected ${testFiles.length} test file(s).`);
+      }
+    }
+
     try {
       // 1. Documentation updates
       await this.updateDocs();
@@ -986,7 +1057,7 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
         totalWarnings += cachedLinting.warnings;
         this.log('SUCCESS', 'Code quality checks completed (cached)');
       } else {
-        await this.runLinting();
+        await this.runLinting(false, config);
         const lintingResults: QAResults = {
           errors: 0,
           warnings: 0,
@@ -1014,6 +1085,16 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
         };
         await this.setCachedResult('testing', testingResults);
         this.log('SUCCESS', 'Testing completed');
+      }
+
+      if (qualityGates.requireTestCoverage) {
+        try {
+          const coverage = await this.enforceTestCoverageRequirement(config ?? { qualityGates });
+          this.log('SUCCESS', `Coverage requirement satisfied at ${coverage.toFixed(2)}%.`);
+        } catch (error: any) {
+          totalErrors++;
+          this.log('ERROR', error?.message ?? String(error));
+        }
       }
 
       // 4. Build verification - check cache first
@@ -1430,7 +1511,9 @@ exit 0`;
     } else {
       this.log('SUCCESS', 'Git hooks removal completed');
     }
-  }  private async generateReport(results: QAResults): Promise<void> {
+  }
+
+  private async generateReport(results: QAResults): Promise<void> {
     const reportPath = path.join(this.projectRoot, "qa-report.json");
     const report = {
       timestamp: results.timestamp.toISOString(),
@@ -1442,5 +1525,948 @@ exit 0`;
 
     await writeFile(reportPath, JSON.stringify(report, null, 2));
     this.log("SUCCESS", `QA report generated: ${reportPath}`);
+  }
+
+  /**
+   * Detect project type and frameworks
+   */
+  private async detectProjectType(): Promise<{
+    projectType: string;
+    frameworks: string[];
+    languages: string[];
+    confidence: number;
+    hasTests: boolean;
+    hasBuild: boolean;
+  }> {
+    const detection = {
+      projectType: 'unknown',
+      frameworks: [] as string[],
+      languages: [] as string[],
+      confidence: 0,
+      hasTests: false,
+      hasBuild: false
+    };
+
+    // Check for package.json
+    const packageJsonPath = path.join(this.projectRoot, 'package.json');
+    if (await pathExists(packageJsonPath)) {
+      try {
+        const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
+        detection.languages.push('javascript');
+
+        // Check for TypeScript
+        if (await pathExists(path.join(this.projectRoot, 'tsconfig.json'))) {
+          detection.languages.push('typescript');
+        }
+
+        // Detect frameworks from dependencies
+        const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+
+        // Blockchain frameworks
+        if (deps['hardhat']) {
+          detection.frameworks.push('hardhat');
+          detection.projectType = 'blockchain';
+          detection.confidence = 90;
+        } else if (deps['@nomiclabs/hardhat-ethers']) {
+          detection.frameworks.push('hardhat');
+          detection.projectType = 'blockchain';
+          detection.confidence = 85;
+        } else if (deps['truffle']) {
+          detection.frameworks.push('truffle');
+          detection.projectType = 'blockchain';
+          detection.confidence = 90;
+        }
+
+        // Frontend frameworks
+        if (deps['react']) {
+          detection.frameworks.push('react');
+          detection.projectType = detection.projectType === 'blockchain' ? 'fullstack' : 'frontend';
+          detection.confidence = Math.max(detection.confidence, 85);
+        }
+        if (deps['next']) {
+          detection.frameworks.push('next.js');
+          detection.projectType = detection.projectType === 'blockchain' ? 'fullstack' : 'frontend';
+          detection.confidence = Math.max(detection.confidence, 90);
+        }
+        if (deps['vue']) {
+          detection.frameworks.push('vue');
+          detection.projectType = detection.projectType === 'blockchain' ? 'fullstack' : 'frontend';
+          detection.confidence = Math.max(detection.confidence, 85);
+        }
+        if (deps['@angular/core']) {
+          detection.frameworks.push('angular');
+          detection.projectType = detection.projectType === 'blockchain' ? 'fullstack' : 'frontend';
+          detection.confidence = Math.max(detection.confidence, 85);
+        }
+
+        // Check for tests
+        detection.hasTests = !!(deps['jest'] || deps['mocha'] || deps['vitest'] || packageJson.scripts?.test);
+
+        // Check for build scripts
+        detection.hasBuild = !!packageJson.scripts?.build;
+
+      } catch (error) {
+        // Ignore parse errors
+      }
+    }
+
+    // Check for blockchain-specific files
+    const blockchainPath = path.join(this.projectRoot, 'blockchain');
+    if (await pathExists(blockchainPath)) {
+      detection.projectType = detection.projectType === 'frontend' ? 'fullstack' : 'blockchain';
+      detection.confidence = Math.max(detection.confidence, 80);
+    }
+
+    // Check for frontend directory
+    const frontendPath = path.join(this.projectRoot, 'frontend');
+    if (await pathExists(frontendPath)) {
+      detection.projectType = detection.projectType === 'blockchain' ? 'fullstack' : 'frontend';
+      detection.confidence = Math.max(detection.confidence, 80);
+    }
+
+    // Default fallback
+    if (detection.projectType === 'unknown') {
+      detection.projectType = 'library';
+      detection.confidence = 50;
+    }
+
+    return detection;
+  }
+
+  /**
+   * Interactive configuration wizard for setting up QA agent
+   */
+  async runInteractiveSetup(): Promise<void> {
+    const inquirer = (await import('inquirer')).default;
+
+    console.log(chalk.cyan('\n🛡️  Echain QA Agent - Interactive Setup'));
+    console.log(chalk.gray('Let\'s configure quality assurance for your project!\n'));
+
+    // Detect project type first
+    const detection = await this.detectProjectType();
+
+    console.log(chalk.blue('🔍 Project Analysis:'));
+    console.log(`   Type: ${detection.projectType} (${detection.confidence}% confidence)`);
+    console.log(`   Frameworks: ${detection.frameworks.join(', ') || 'none detected'}`);
+    console.log(`   Languages: ${detection.languages.join(', ')}`);
+    console.log(`     Tests: ${detection.hasTests ? '✅ detected' : '❌ not found'}`);
+    console.log(`   Build: ${detection.hasBuild ? '✅ configured' : '❌ not configured'}\n`);
+
+    // Project type confirmation
+    const { confirmProjectType } = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'confirmProjectType',
+      message: `Is this a ${detection.projectType} project?`,
+      default: detection.confidence > 70
+    }]);
+
+    let projectType = detection.projectType;
+    let frameworks = [...detection.frameworks];
+
+    if (!confirmProjectType) {
+      const { manualProjectType } = await inquirer.prompt([{
+        type: 'list',
+        name: 'manualProjectType',
+        message: 'What type of project is this?',
+        choices: [
+          { name: 'Blockchain/Smart Contracts', value: 'blockchain' },
+          { name: 'Frontend Web Application', value: 'frontend' },
+          { name: 'Full-stack Application', value: 'fullstack' },
+          { name: 'Library/Package', value: 'library' }
+        ]
+      }]);
+      projectType = manualProjectType;
+
+      // Ask about frameworks based on project type
+      if (projectType === 'blockchain') {
+        const { blockchainFrameworks } = await inquirer.prompt([{
+          type: 'checkbox',
+          name: 'blockchainFrameworks',
+          message: 'Which blockchain frameworks are you using?',
+          choices: [
+            { name: 'Hardhat', value: 'hardhat' },
+            { name: 'Foundry', value: 'foundry' },
+            { name: 'Truffle', value: 'truffle' },
+            { name: 'Other', value: 'other' }
+          ]
+        }]);
+        frameworks = blockchainFrameworks.filter((f: string) => f !== 'other');
+      } else if (projectType === 'frontend') {
+        const { frontendFrameworks } = await inquirer.prompt([{
+          type: 'checkbox',
+          name: 'frontendFrameworks',
+          message: 'Which frontend frameworks are you using?',
+          choices: [
+            { name: 'React', value: 'react' },
+            { name: 'Next.js', value: 'next.js' },
+            { name: 'Vue.js', value: 'vue' },
+            { name: 'Angular', value: 'angular' },
+            { name: 'Vite', value: 'vite' },
+            { name: 'Other', value: 'other' }
+          ]
+        }]);
+        frameworks = frontendFrameworks.filter((f: string) => f !== 'other');
+      }
+    }
+
+    // Quality checks configuration
+    console.log(chalk.blue('\n🔧 Quality Checks Configuration:'));
+    const { enableLinting, enableTesting, enableSecurity, enableBuild, enablePerformance } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'enableLinting',
+        message: 'Enable code linting checks?',
+        default: true
+      },
+      {
+        type: 'confirm',
+        name: 'enableTesting',
+        message: 'Enable automated testing?',
+        default: detection.hasTests
+      },
+      {
+        type: 'confirm',
+        name: 'enableSecurity',
+        message: 'Enable security vulnerability scanning?',
+        default: true
+      },
+      {
+        type: 'confirm',
+        name: 'enableBuild',
+        message: 'Enable build verification?',
+        default: detection.hasBuild
+      },
+      {
+        type: 'confirm',
+        name: 'enablePerformance',
+        message: 'Enable performance checks?',
+        default: false
+      }
+    ]);
+
+    // Quality gates
+    console.log(chalk.blue('\n🚧 Quality Gates:'));
+    const { failOnLintErrors, failOnTestFailures, failOnBuildFailures, requireTests } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'failOnLintErrors',
+        message: 'Fail builds on linting errors?',
+        default: true
+      },
+      {
+        type: 'confirm',
+        name: 'failOnTestFailures',
+        message: 'Fail builds on test failures?',
+        default: true
+      },
+      {
+        type: 'confirm',
+        name: 'failOnBuildFailures',
+        message: 'Fail builds on build failures?',
+        default: true
+      },
+      {
+        type: 'confirm',
+        name: 'requireTests',
+        message: 'Require test files to be present?',
+        default: false
+      }
+    ]);
+
+    // Git hooks setup
+    console.log(chalk.blue('\n🔗 Git Integration:'));
+    const { setupPreCommit, setupPrePush, wrapScripts } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'setupPreCommit',
+        message: 'Install pre-commit hook for QA checks?',
+        default: true
+      },
+      {
+        type: 'confirm',
+        name: 'setupPrePush',
+        message: 'Install pre-push hook for QA checks?',
+        default: true
+      },
+      {
+        type: 'confirm',
+        name: 'wrapScripts',
+        message: 'Wrap npm scripts (build, start, dev, test) with QA checks?',
+        default: false
+      }
+    ]);
+
+    // Create configuration
+    const config = {
+      version: "2.2.0",
+      project: {
+        name: path.basename(this.projectRoot),
+        type: projectType,
+        frameworks: frameworks
+      },
+      checks: {
+        linting: enableLinting,
+        testing: enableTesting,
+        security: enableSecurity,
+        build: enableBuild,
+        performance: enablePerformance
+      },
+      paths: {
+        frontend: "frontend",
+        blockchain: "blockchain",
+        docs: "docs",
+        tests: "test"
+      },
+      hooks: {
+        preCommit: setupPreCommit,
+        prePush: setupPrePush,
+        autoInstall: true,
+        wrapScripts: wrapScripts,
+        scriptsToWrap: ["build", "start", "dev", "test"]
+      },
+      timeouts: {
+        lint: 300,
+        test: 600,
+        build: 300,
+        security: 120
+      },
+      qualityGates: {
+        failOnLintErrors: failOnLintErrors,
+        failOnTestFailures: failOnTestFailures,
+        failOnBuildFailures: failOnBuildFailures,
+        failOnSecurityVulnerabilities: true,
+        failOnPerformanceIssues: false,
+        requireTests: requireTests,
+        requireTestCoverage: false,
+        minTestCoverage: 80
+      }
+    };
+
+    // Show configuration preview
+    console.log(chalk.blue('\n📋 Configuration Preview:'));
+    console.log(JSON.stringify(config, null, 2));
+
+    const { confirmConfig } = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'confirmConfig',
+      message: 'Save this configuration?',
+      default: true
+    }]);
+
+    if (confirmConfig) {
+      const configPath = path.join(this.projectRoot, '.qa-config.json');
+      await writeFile(configPath, JSON.stringify(config, null, 2));
+      console.log(chalk.green(`\n✅ Configuration saved to ${configPath}`));
+
+      // Setup hooks if requested
+      if (setupPreCommit || setupPrePush) {
+        console.log(chalk.blue('\n🔗 Setting up git hooks...'));
+        await this.setupHooks();
+      }
+
+      // Wrap scripts if requested
+      if (wrapScripts) {
+        console.log(chalk.blue('\n📦 Wrapping npm scripts...'));
+        await this.wrapScripts();
+      }
+
+      console.log(chalk.green('\n🎉 Setup complete! Run "echain-qa run" to start QA checks.'));
+    } else {
+      console.log(chalk.yellow('\n⚠️  Configuration not saved. You can run this setup again anytime.'));
+    }
+  }
+
+  /**
+   * Run guided troubleshooting to identify and fix common issues
+   */
+  async runGuidedTroubleshooting(): Promise<void> {
+    const inquirer = (await import('inquirer')).default;
+
+    console.log(chalk.cyan('\n🔧 Guided Troubleshooting'));
+    console.log(chalk.gray('Let\'s identify and fix common project issues...\n'));
+
+    // Analyze recent issues
+    const issues = await this.analyzeRecentIssues();
+
+    if (issues.length === 0) {
+      console.log(chalk.green('✅ No issues detected! Your project looks healthy.'));
+      return;
+    }
+
+    console.log(chalk.yellow(`⚠️  Found ${issues.length} potential issue${issues.length === 1 ? '' : 's'}:\n`));
+
+    // Display issues
+    issues.forEach((issue, index) => {
+      console.log(`${index + 1}. ${issue.title}`);
+      console.log(`   ${issue.description}`);
+      console.log(`   Severity: ${issue.severity}`);
+      console.log(`   Category: ${issue.category}\n`);
+    });
+
+    // Ask user which issues to address
+    const { selectedIssues } = await inquirer.prompt([{
+      type: 'checkbox',
+      name: 'selectedIssues',
+      message: 'Which issues would you like to address?',
+      choices: issues.map((issue, index) => ({
+        name: `${index + 1}. ${issue.title} (${issue.severity})`,
+        value: index,
+        checked: issue.severity === 'high'
+      }))
+    }]);
+
+    // Troubleshoot selected issues
+    for (const issueIndex of selectedIssues) {
+      const issue = issues[issueIndex];
+      await this.troubleshootIssue(issue);
+    }
+
+    console.log(chalk.green('\n✅ Troubleshooting completed!'));
+  }
+
+  /**
+   * Analyze recent issues in the project
+   */
+  private async analyzeRecentIssues(): Promise<any[]> {
+    const issues: any[] = [];
+
+    // Check configuration issues
+    const configIssues = await this.detectConfigurationIssues();
+    issues.push(...configIssues);
+
+    // Check dependency issues
+    const dependencyIssues = await this.detectDependencyIssues();
+    issues.push(...dependencyIssues);
+
+    // Check code quality issues
+    const codeQualityIssues = await this.detectCodeQualityIssues();
+    issues.push(...codeQualityIssues);
+
+    return issues;
+  }
+
+  /**
+   * Detect configuration-related issues
+   */
+  private async detectConfigurationIssues(): Promise<any[]> {
+    const issues: any[] = [];
+
+    // Check for missing config files
+    const configPath = path.join(this.projectRoot, '.qa-config.json');
+    const shellConfigPath = path.join(this.projectRoot, '.qa-config');
+
+    if (!(await pathExists(configPath)) && !(await pathExists(shellConfigPath))) {
+      issues.push({
+        title: 'Missing QA Configuration',
+        description: 'No QA configuration file found. Run "echain-qa setup" to create one.',
+        severity: 'medium',
+        category: 'configuration',
+        autoFix: true
+      });
+    }
+
+    // Check for missing package.json
+    const packageJsonPath = path.join(this.projectRoot, 'package.json');
+    if (!(await pathExists(packageJsonPath))) {
+      issues.push({
+        title: 'Missing package.json',
+        description: 'No package.json found. This is required for Node.js projects.',
+        severity: 'high',
+        category: 'configuration',
+        autoFix: false
+      });
+    }
+
+    return issues;
+  }
+
+  /**
+   * Detect dependency-related issues
+   */
+  private async detectDependencyIssues(): Promise<any[]> {
+    const issues: any[] = [];
+
+    const packageJsonPath = path.join(this.projectRoot, 'package.json');
+    if (await pathExists(packageJsonPath)) {
+      try {
+        const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
+
+        // Check for missing lockfile
+        const hasLockFile = await pathExists(path.join(this.projectRoot, 'package-lock.json')) ||
+                           await pathExists(path.join(this.projectRoot, 'yarn.lock')) ||
+                           await pathExists(path.join(this.projectRoot, 'pnpm-lock.yaml'));
+
+        if (!hasLockFile) {
+          issues.push({
+            title: 'Missing Lock File',
+            description: 'No package lock file found. This can lead to inconsistent dependencies.',
+            severity: 'medium',
+            category: 'dependencies',
+            autoFix: false
+          });
+        }
+
+        // Check for outdated dependencies
+        // This would require running npm outdated, but we'll skip for now
+      } catch (error) {
+        issues.push({
+          title: 'Invalid package.json',
+          description: 'package.json contains invalid JSON.',
+          severity: 'high',
+          category: 'configuration',
+          autoFix: false
+        });
+      }
+    }
+
+    return issues;
+  }
+
+  /**
+   * Detect code quality issues
+   */
+  private async detectCodeQualityIssues(): Promise<any[]> {
+    const issues: any[] = [];
+
+    // Check for test files
+    const testFiles = this.collectTestFiles();
+    if (testFiles.length === 0) {
+      issues.push({
+        title: 'No Test Files Found',
+        description: 'No test files detected. Consider adding tests for better code quality.',
+        severity: 'low',
+        category: 'testing',
+        autoFix: false
+      });
+    }
+
+    // Check for linting configuration
+    const hasLinting = await pathExists(path.join(this.projectRoot, '.eslintrc.js')) ||
+                      await pathExists(path.join(this.projectRoot, '.eslintrc.json')) ||
+                      await pathExists(path.join(this.projectRoot, '.eslintrc.yml'));
+
+    if (!hasLinting) {
+      issues.push({
+        title: 'No Linting Configuration',
+        description: 'No ESLint configuration found. Consider adding linting for code quality.',
+        severity: 'low',
+        category: 'code-quality',
+        autoFix: false
+      });
+    }
+
+    return issues;
+  }
+
+  /**
+   * Troubleshoot a specific issue
+   */
+  private async troubleshootIssue(issue: any): Promise<void> {
+    console.log(chalk.blue(`\n🔍 Troubleshooting: ${issue.title}`));
+    console.log(`${issue.description}\n`);
+
+    // Check if we can auto-fix
+    if (issue.autoFix && this.canAutoFixIssue(issue)) {
+      const { applyAutoFix } = await (await import('inquirer')).default.prompt([{
+        type: 'confirm',
+        name: 'applyAutoFix',
+        message: 'Can I automatically fix this issue?',
+        default: true
+      }]);
+
+      if (applyAutoFix) {
+        await this.applyAutoFix(issue);
+        return;
+      }
+    }
+
+    // Provide manual guidance
+    await this.provideManualGuidance(issue);
+  }
+
+  /**
+   * Check if an issue can be auto-fixed
+   */
+  private canAutoFixIssue(issue: any): boolean {
+    switch (issue.title) {
+      case 'Missing QA Configuration':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Apply automatic fix for an issue
+   */
+  private async applyAutoFix(issue: any): Promise<void> {
+    console.log(chalk.yellow('🔧 Applying automatic fix...'));
+
+    switch (issue.title) {
+      case 'Missing QA Configuration':
+        await this.runInteractiveSetup();
+        console.log(chalk.green('✅ QA configuration created automatically'));
+        break;
+      default:
+        console.log(chalk.red('❌ No automatic fix available'));
+    }
+  }
+
+  /**
+   * Provide manual guidance for an issue
+   */
+  private async provideManualGuidance(issue: any): Promise<void> {
+    console.log(chalk.blue('💡 Manual Resolution Steps:'));
+
+    switch (issue.title) {
+      case 'Missing QA Configuration':
+        console.log('1. Run: echain-qa setup');
+        console.log('2. Follow the interactive prompts to configure QA checks');
+        break;
+      case 'Missing package.json':
+        console.log('1. Run: npm init -y');
+        console.log('2. Add your project dependencies');
+        break;
+      case 'Missing Lock File':
+        console.log('1. Run: npm install (if using npm)');
+        console.log('2. Or: yarn install (if using yarn)');
+        console.log('3. Or: pnpm install (if using pnpm)');
+        break;
+      case 'No Test Files Found':
+        console.log('1. Install a testing framework: npm install --save-dev jest');
+        console.log('2. Create test files in a __tests__ directory');
+        console.log('3. Run tests with: npm test');
+        break;
+      case 'No Linting Configuration':
+        console.log('1. Install ESLint: npm install --save-dev eslint');
+        console.log('2. Run: npx eslint --init');
+        console.log('3. Configure linting rules as needed');
+        break;
+      default:
+        console.log('Please refer to the project documentation for resolution steps.');
+    }
+
+    console.log('');
+  }
+
+  /**
+   * Collect test files from the project
+   */
+  private collectTestFiles(_config?: { paths?: { tests?: string } }): string[] {
+    const filesSet = new Set<string>();
+
+    // Common test file patterns
+    const patterns = [
+      '**/*.test.{js,jsx,ts,tsx,cjs,mjs}',
+      '**/*.spec.{js,jsx,ts,tsx,cjs,mjs}',
+      '**/__tests__/**/*.{js,jsx,ts,tsx,cjs,mjs}',
+      '**/test/**/*.{js,jsx,ts,tsx,cjs,mjs}'
+    ];
+
+    const globOptions = {
+      cwd: this.projectRoot,
+      absolute: false,
+      nodir: true
+    } as const;
+
+    try {
+      for (const pattern of patterns) {
+        const matches: string[] = globSync(pattern, globOptions as any);
+        matches.forEach((file) => filesSet.add(file));
+      }
+    } catch (error) {
+      // Ignore glob errors
+    }
+
+    return Array.from(filesSet);
+  }
+
+  private async enforceTestCoverageRequirement(config: any): Promise<number> {
+    const configuredPath = config?.paths?.coverageSummary;
+    const resolvedPath = configuredPath
+      ? (path.isAbsolute(configuredPath) ? configuredPath : path.join(this.projectRoot, configuredPath))
+      : path.join(this.projectRoot, 'coverage', 'coverage-summary.json');
+
+    if (!await pathExists(resolvedPath)) {
+      throw new Error('Coverage summary not found');
+    }
+
+    let coverageRaw: string;
+    try {
+      coverageRaw = await readFile(resolvedPath, 'utf-8');
+    } catch (error) {
+      throw new Error(`Unable to read coverage summary: ${error}`);
+    }
+
+    let coverageSummary: any;
+    try {
+      coverageSummary = JSON.parse(coverageRaw);
+    } catch (error) {
+      throw new Error('Coverage summary is not valid JSON');
+    }
+
+    const total = coverageSummary?.total;
+    if (!total) {
+      throw new Error('Coverage summary missing total metrics');
+    }
+
+    const metrics = ['lines', 'statements', 'branches', 'functions'] as const;
+    const coverageValues = metrics
+      .map((metric) => total[metric]?.pct)
+      .filter((value): value is number => typeof value === 'number');
+
+    if (coverageValues.length === 0) {
+      throw new Error('Coverage summary missing metric percentages');
+    }
+
+    const minimumCoverage = Math.min(...coverageValues);
+    const requiredCoverage = config?.qualityGates?.minTestCoverage ?? 0;
+
+    if (minimumCoverage < requiredCoverage) {
+      throw new Error(`Coverage ${minimumCoverage.toFixed(2)}% is below required ${requiredCoverage}% threshold.`);
+    }
+
+    return minimumCoverage;
+  }
+
+  /**
+   * Run the plugin marketplace interface
+   */
+  async runPluginMarketplace(): Promise<void> {
+    const inquirer = (await import('inquirer')).default;
+
+    console.log(chalk.cyan('\n🛒 Plugin Marketplace'));
+    console.log(chalk.gray('Discover and install QA plugins...\n'));
+
+    // Get available plugins
+    const availablePlugins = await this.getAvailablePlugins();
+
+    if (availablePlugins.length === 0) {
+      console.log(chalk.yellow('⚠️  No plugins available in the marketplace at this time.'));
+      return;
+    }
+
+    // Display available plugins
+    console.log(chalk.blue('Available Plugins:\n'));
+    availablePlugins.forEach((plugin, index) => {
+      console.log(`${index + 1}. ${plugin.name}`);
+      console.log(`   ${plugin.description}`);
+      console.log(`   Version: ${plugin.version}`);
+      console.log(`   Author: ${plugin.author}`);
+      if (plugin.tags && plugin.tags.length > 0) {
+        console.log(`   Tags: ${plugin.tags.join(', ')}`);
+      }
+      console.log('');
+    });
+
+    // Ask user which plugin to install
+    const { selectedPlugin } = await inquirer.prompt([{
+      type: 'list',
+      name: 'selectedPlugin',
+      message: 'Which plugin would you like to install?',
+      choices: [
+        { name: 'Cancel', value: null },
+        ...availablePlugins.map((plugin, index) => ({
+          name: `${plugin.name} (${plugin.version})`,
+          value: index
+        }))
+      ]
+    }]);
+
+    if (selectedPlugin !== null) {
+      const plugin = availablePlugins[selectedPlugin];
+      await this.installAndConfigurePlugin(plugin);
+    }
+  }
+
+  /**
+   * Get available plugins from the marketplace
+   */
+  private async getAvailablePlugins(): Promise<any[]> {
+    // For now, return a hardcoded list of example plugins
+    // In a real implementation, this would fetch from a remote API
+    return [
+      {
+        name: 'security-scan',
+        description: 'Advanced security vulnerability scanning',
+        version: '1.0.0',
+        author: 'Echain Team',
+        tags: ['security', 'vulnerability'],
+        packageName: '@echain/qa-plugin-security'
+      },
+      {
+        name: 'performance-monitor',
+        description: 'Performance monitoring and optimization checks',
+        version: '1.0.0',
+        author: 'Echain Team',
+        tags: ['performance', 'optimization'],
+        packageName: '@echain/qa-plugin-performance'
+      },
+      {
+        name: 'accessibility-checker',
+        description: 'Web accessibility compliance testing',
+        version: '1.0.0',
+        author: 'Echain Team',
+        tags: ['accessibility', 'a11y'],
+        packageName: '@echain/qa-plugin-accessibility'
+      },
+      {
+        name: 'code-coverage',
+        description: 'Enhanced code coverage reporting',
+        version: '1.0.0',
+        author: 'Echain Team',
+        tags: ['coverage', 'testing'],
+        packageName: '@echain/qa-plugin-coverage'
+      }
+    ];
+  }
+
+  /**
+   * Install and configure a plugin
+   */
+  private async installAndConfigurePlugin(plugin: any): Promise<void> {
+    console.log(chalk.blue(`\n📦 Installing plugin: ${plugin.name}`));
+
+    try {
+      // Install the plugin package
+      await this.installPlugin(plugin.packageName);
+
+      // Configure the plugin
+      await this.configurePlugin(plugin.name);
+
+      console.log(chalk.green(`✅ Plugin ${plugin.name} installed and configured successfully!`));
+    } catch (error: any) {
+      console.log(chalk.red(`❌ Failed to install plugin ${plugin.name}: ${error.message}`));
+    }
+  }
+
+  /**
+   * Install a plugin by package name
+   */
+  async installPlugin(packageName: string): Promise<{ success: boolean; installedPath?: string; error?: string }> {
+    console.log(chalk.blue(`\n📦 Installing ${packageName}...`));
+
+    try {
+      // Run npm install
+      await this.runCommand(`npm install --save-dev ${packageName}`, `Install ${packageName}`);
+
+      console.log(chalk.green(`✅ Package ${packageName} installed successfully`));
+
+      // Reload plugins to include the new one
+      await this.loadPlugins();
+
+      return { success: true };
+
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Configure a plugin after installation
+   */
+  private async configurePlugin(pluginName: string): Promise<void> {
+    console.log(chalk.blue(`\n⚙️  Configuring ${pluginName}...`));
+
+    // Get plugin configuration
+    const config = await this.getPluginConfig(pluginName);
+
+    if (!config) {
+      console.log(chalk.yellow(`⚠️  No configuration required for ${pluginName}`));
+      return;
+    }
+
+    // Save plugin configuration
+    await this.savePluginConfig(pluginName, config);
+    console.log(chalk.green(`✅ Plugin ${pluginName} configured`));
+  }
+
+  /**
+   * Get configuration for a plugin
+   */
+  private async getPluginConfig(pluginName: string): Promise<any> {
+    // This would typically prompt the user for configuration
+    // For now, return default config
+    const defaultConfigs: { [key: string]: any } = {
+      'security-scan': {
+        enabled: true,
+        severity: 'medium'
+      },
+      'performance-monitor': {
+        enabled: true,
+        threshold: 100
+      },
+      'accessibility-checker': {
+        enabled: true,
+        standards: ['WCAG2A', 'WCAG2AA']
+      },
+      'code-coverage': {
+        enabled: true,
+        minimum: 80
+      }
+    };
+
+    return defaultConfigs[pluginName] || null;
+  }
+
+  /**
+   * Save plugin configuration
+   */
+  private async savePluginConfig(pluginName: string, config: any): Promise<void> {
+    this.pluginConfigs[pluginName] = config;
+
+    // Save to config file
+    const configPath = path.join(this.projectRoot, '.qa-config.json');
+    let existingConfig = {};
+
+    if (await pathExists(configPath)) {
+      try {
+        existingConfig = JSON.parse(await readFile(configPath, 'utf-8'));
+      } catch (error) {
+        // Ignore parse errors
+      }
+    }
+
+    const updatedConfig = {
+      ...existingConfig,
+      plugins: {
+        ...((existingConfig as any).plugins || {}),
+        [pluginName]: config
+      }
+    };
+
+    await writeFile(configPath, JSON.stringify(updatedConfig, null, 2));
+  }
+
+  /**
+   * List all installed plugins
+   */
+  async listInstalledPlugins(): Promise<void> {
+    console.log(chalk.cyan('\n📋 Installed Plugins\n'));
+
+    if (this.plugins.size === 0) {
+      console.log(chalk.yellow('No plugins installed.'));
+      console.log(chalk.gray('Run "echain-qa marketplace" to browse available plugins.'));
+      return;
+    }
+
+    let index = 1;
+    for (const [pluginName, plugin] of this.plugins) {
+      console.log(`${index}. ${pluginName}`);
+      console.log(`   ${plugin.description || 'No description available'}`);
+      console.log(`   Version: ${plugin.version || 'Unknown'}`);
+      console.log(`   Enabled: ${this.pluginConfigs[pluginName]?.enabled !== false ? 'Yes' : 'No'}`);
+
+      // Show plugin-specific config if available
+      const config = this.pluginConfigs[pluginName];
+      if (config && Object.keys(config).length > 1) { // More than just 'enabled'
+        console.log(`   Configuration: ${JSON.stringify(config)}`);
+      }
+
+      console.log('');
+      index++;
+    }
+
+    console.log(chalk.gray(`Total: ${this.plugins.size} plugin${this.plugins.size === 1 ? '' : 's'} installed`));
   }
 }

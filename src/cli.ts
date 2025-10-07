@@ -3,18 +3,16 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { QAAgent } from './qa-agent';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 
 // Read version from package.json
-const packageJson = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
+const packageJson = require('../package.json');
 const version = packageJson.version;
 
 const program = new Command();
 
 program
   .name('echain-qa')
-  .description('🛡️ Echain Quality Assurance Agent - Comprehensive QA automation for blockchain projects')
+  .description('🛡️ Quality Assurance Agent - Comprehensive QA automation for blockchain projects')
   .version(version);
 
 program
@@ -112,6 +110,19 @@ program
   });
 
 program
+  .command('setup')
+  .description('Interactive setup wizard for QA configuration')
+  .action(async () => {
+    const agent = new QAAgent();
+    try {
+      await agent.runInteractiveSetup();
+    } catch (error) {
+      console.error(chalk.red('❌ Interactive setup failed:'), error);
+      process.exit(1);
+    }
+  });
+
+program
   .command('setup-hooks')
   .description('Install git hooks for automatic QA checks')
   .action(async () => {
@@ -184,6 +195,70 @@ program
       console.log(chalk.green('✅ QA hooks removed successfully'));
     } catch (error) {
       console.error(chalk.red('❌ Hook removal failed:'), error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('plugins')
+  .description('Interactive plugin marketplace - browse, search, and install plugins')
+  .action(async () => {
+    const agent = new QAAgent();
+    try {
+      await agent.runPluginMarketplace();
+    } catch (error) {
+      console.error(chalk.red('❌ Plugin marketplace failed:'), error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('install-plugin <pluginName>')
+  .description('Install a specific plugin from the registry')
+  .action(async (pluginName) => {
+    const agent = new QAAgent();
+    try {
+      console.log(chalk.blue(`\n⬇️ Installing plugin: ${pluginName}`));
+      const result = await agent.installPlugin(pluginName);
+
+      if (result.success) {
+        console.log(chalk.green(`✅ Plugin '${pluginName}' installed successfully!`));
+        if (result.installedPath) {
+          console.log(chalk.gray(`Installed at: ${result.installedPath}`));
+        }
+      } else {
+        console.log(chalk.red(`❌ Installation failed: ${result.error}`));
+        process.exit(1);
+      }
+    } catch (error) {
+      console.error(chalk.red('❌ Plugin installation failed:'), error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('list-plugins')
+  .description('List all installed plugins')
+  .action(async () => {
+    const agent = new QAAgent();
+    try {
+      await agent.loadPlugins(); // Load installed plugins
+      await agent.listInstalledPlugins();
+    } catch (error) {
+      console.error(chalk.red('❌ Failed to list plugins:'), error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('troubleshoot')
+  .description('Interactive guided troubleshooting for QA issues')
+  .action(async () => {
+    const agent = new QAAgent();
+    try {
+      await agent.runGuidedTroubleshooting();
+    } catch (error) {
+      console.error(chalk.red('❌ Troubleshooting failed:'), error);
       process.exit(1);
     }
   });
