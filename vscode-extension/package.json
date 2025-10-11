@@ -2,7 +2,7 @@
   "name": "echain-qa-mcp-installer",
   "displayName": "Echain QA MCP Installer",
   "description": "Easily install and configure the Echain QA Agent MCP server in VS Code",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "polymathuniversata",
   "icon": "icon.png",
   "engines": {
