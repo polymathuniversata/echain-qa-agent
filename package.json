@@ -4,10 +4,10 @@
   "description": "Experimental: Comprehensive QA automation for blockchain and web3 projects - ensures code quality, runs tests, and updates documentation",
   "main": "dist/index.js",
   "bin": {
-    "echain-qa": "./dist/cli.js",
-    "echain": "./dist/cli.js",
-    "echain-qa-mcp": "./dist/mcp-server.js",
-    "echain-qa-api": "./dist/api-server.js"
+    "echain-qa": "dist/cli.js",
+    "echain": "dist/cli.js",
+    "echain-qa-mcp": "dist/mcp-server.js",
+    "echain-qa-api": "dist/api-server.js"
   },
   "type": "module",
   "scripts": {
@@ -52,7 +52,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/polymathuniversata/echain-qa-agent.git"
+    "url": "git+https://github.com/polymathuniversata/echain-qa-agent.git"
   },
   "bugs": {
     "url": "https://github.com/polymathuniversata/echain-qa-agent/issues"
