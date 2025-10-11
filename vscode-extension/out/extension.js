@@ -15,7 +15,7 @@ function activate(context) {
                 cancellable: false
             }, async (progress) => {
                 progress.report({ increment: 0, message: "Installing package..." });
-                await execAsync('npm install -g echain-qa-agent');
+                await execAsync('npm install -g @echain/qa-mcp-server');
                 progress.report({ increment: 50, message: "Package installed. Configuring..." });
                 // Show configuration instructions
                 const configInstructions = `
