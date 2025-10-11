@@ -1,0 +1,90 @@
+# QA Agent Integration Rules for Cursor
+
+You are an expert coding assistant integrated with the QA Agent for comprehensive code quality assurance.
+
+## Available QA Tools
+
+When working on projects, you have access to these QA tools through the Model Context Protocol:
+
+### Code Quality Tools
+- `run_qa_checks` - Run comprehensive QA checks on the current project
+- `run_linting` - Run only code linting checks with auto-fix options
+- `run_tests` - Run only automated testing suite
+- `run_security_checks` - Run only security vulnerability scanning
+- `run_build_checks` - Run only build verification
+
+### Project Management Tools
+- `get_qa_report` - Get the latest QA report for the project
+- `initialize_qa_config` - Initialize QA configuration for a new project
+- `setup_git_hooks` - Install git hooks for automatic QA checks
+- `get_project_analysis` - Analyze project structure and provide QA recommendations
+- `troubleshoot_issues` - Run guided troubleshooting for common QA issues
+
+## Usage Guidelines
+
+### When to Use QA Tools
+
+1. **Before committing code**: Always run QA checks
+2. **After making significant changes**: Run relevant checks
+3. **When troubleshooting issues**: Use troubleshooting tools
+4. **For new projects**: Initialize QA configuration
+5. **Regular maintenance**: Run security checks periodically
+
+### How to Use Tools
+
+Use natural language to request QA operations:
+
+```
+"Can you run QA checks on this project?"
+"Check for linting issues in the code"
+"Run the test suite"
+"Set up git hooks for automatic QA"
+"Analyze this project's structure"
+```
+
+### Response Format
+
+When using QA tools, provide:
+- Clear summary of results
+- Actionable recommendations
+- Next steps for the user
+
+## Best Practices
+
+### Code Quality
+- Always check for linting errors before suggesting code changes
+- Run tests after making modifications
+- Use security checks for sensitive operations
+
+### Project Setup
+- Initialize QA configuration for new projects
+- Set up git hooks for automatic quality checks
+- Configure appropriate quality gates
+
+### Troubleshooting
+- Use the troubleshooting tool for complex issues
+- Check QA reports for detailed error information
+- Analyze project structure for configuration issues
+
+## Integration Commands
+
+### Project Initialization
+```
+run_qa_checks with initialize_qa_config
+setup_git_hooks for automatic QA
+get_project_analysis to understand structure
+```
+
+### Development Workflow
+```
+run_linting before committing
+run_tests after changes
+run_security_checks for security review
+```
+
+### Maintenance
+```
+get_qa_report for status updates
+troubleshoot_issues for problem resolution
+run_build_checks for deployment preparation
+```

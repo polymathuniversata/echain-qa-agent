@@ -1,0 +1,93 @@
+{
+  "project": {
+    "name": "MyBlockchainProject",
+    "type": "blockchain",
+    "frameworks": ["hardhat"],
+    "version": "1.0.0",
+    "description": "A blockchain project with smart contracts",
+    "files": [
+      "contracts/**/*.sol",
+      "test/**/*.ts",
+      "scripts/**/*.ts",
+      "src/**/*.ts"
+    ],
+    "exclude": [
+      "node_modules/**",
+      "artifacts/**",
+      "cache/**",
+      "coverage/**",
+      "dist/**"
+    ]
+  },
+  "checks": {
+    "codeQuality": {
+      "enabled": true,
+      "solidity": {
+        "compiler": "0.8.19",
+        "optimizer": true,
+        "viaIR": false
+      },
+      "typescript": {
+        "strict": true,
+        "noImplicitAny": true,
+        "strictNullChecks": true
+      },
+      "eslint": {
+        "extends": ["@typescript-eslint/recommended"]
+      }
+    },
+    "testing": {
+      "enabled": true,
+      "unit": {
+        "command": "npx hardhat test",
+        "timeout": 30000,
+        "bail": false
+      },
+      "coverage": {
+        "command": "npx hardhat coverage",
+        "threshold": {
+          "branches": 80,
+          "functions": 85,
+          "lines": 80,
+          "statements": 80
+        }
+      }
+    },
+    "security": {
+      "enabled": true,
+      "slither": {
+        "excludeDependencies": true,
+        "excludeInformational": false,
+        "failOn": "high"
+      },
+      "mythril": {
+        "enabled": false,
+        "timeout": 60000
+      }
+    },
+    "build": {
+      "enabled": true,
+      "command": "npx hardhat compile",
+      "verify": true
+    }
+  },
+  "plugins": [],
+  "reporting": {
+    "format": "html",
+    "output": "./qa-reports",
+    "includeDetails": true,
+    "includeSuggestions": true
+  },
+  "caching": {
+    "enabled": true,
+    "ttl": {
+      "results": "1h",
+      "security": "24h"
+    }
+  },
+  "performance": {
+    "parallel": true,
+    "maxConcurrency": 4,
+    "failFast": false
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "mcp": {
+    "servers": {
+      "echain-qa-agent": {
+        "command": "node",
+        "args": ["${workspaceFolder}/node_modules/echain-qa-agent/dist/mcp-server.js"],
+        "env": {
+          "NODE_ENV": "development"
+        }
+      }
+    }
+  }
+}

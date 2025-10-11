@@ -1,5 +1,4 @@
 import { QAAgent } from '../../src/qa-agent';
-import { promises as fs } from 'fs';
 import path from 'path';
 import { jest } from '@jest/globals';
 
@@ -24,10 +23,11 @@ jest.mock('glob', () => ({
   globSync: jest.fn(),
 }));
 
-// Mock child_process
-jest.mock('child_process', () => ({
-  exec: jest.fn(),
-  spawn: jest.fn(),
+// Mock inquirer
+jest.mock('inquirer', () => ({
+  default: {
+    prompt: jest.fn()
+  }
 }));
 
 describe('QAAgent', () => {
@@ -68,21 +68,21 @@ describe('QAAgent', () => {
     });
 
     it('should redact API keys in logs', () => {
-      (agent as any).log('INFO', 'API_KEY=0x123456789abcdef');
+      (agent as any).logger.log('INFO', 'API_KEY=0x123456789abcdef');
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('API_KEY=[REDACTED]')
       );
     });
 
     it('should redact private keys in logs', () => {
-      (agent as any).log('INFO', 'PRIVATE_KEY=0x123456789abcdef123456789abcdef123456789abcdef123456789abcdef123456789abcdef12345678');
+      (agent as any).logger.log('INFO', 'PRIVATE_KEY=0x123456789abcdef123456789abcdef123456789abcdef123456789abcdef123456789abcdef12345678');
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('PRIVATE_KEY=[REDACTED]')
       );
     });
 
     it('should redact passwords in logs', () => {
-      (agent as any).log('INFO', 'password=secret123');
+      (agent as any).logger.log('INFO', 'password=secret123');
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('password=[REDACTED]')
       );
@@ -130,7 +130,7 @@ describe('QAAgent', () => {
     const fsExtra = require('fs-extra');
     const glob = require('glob');
 
-    it('should detect test files via collectTestFiles', () => {
+    it('should detect test files via collectTestFiles', async () => {
       (glob.globSync as jest.Mock).mockImplementation((pattern: unknown) => {
         if (pattern === '**/*.test.{js,jsx,ts,tsx,cjs,mjs}') {
           return ['src/example.test.ts'];
@@ -138,7 +138,7 @@ describe('QAAgent', () => {
         return [];
       });
 
-      const files = (agent as any).collectTestFiles({ paths: { tests: 'test' } });
+      const files = await (agent as any).projectDetector.collectTestFiles();
       expect(files).toEqual(['src/example.test.ts']);
     });
 
@@ -153,7 +153,7 @@ describe('QAAgent', () => {
         }
       }));
 
-      await expect((agent as any).enforceTestCoverageRequirement({
+      await expect((agent as any).testRunner.enforceTestCoverageRequirement({
         qualityGates: { minTestCoverage: 80 }
       })).rejects.toThrow('Coverage 68.00% is below required 80% threshold.');
     });
@@ -169,7 +169,7 @@ describe('QAAgent', () => {
         }
       }));
 
-      await expect((agent as any).enforceTestCoverageRequirement({
+      await expect((agent as any).testRunner.enforceTestCoverageRequirement({
         qualityGates: { minTestCoverage: 80 }
       })).resolves.toBe(88);
     });
@@ -188,13 +188,15 @@ describe('QAAgent', () => {
     it('should run command successfully', async () => {
       const mockChild = {
         on: jest.fn((event: string, callback: (code: number) => void) => {
-          if (event === 'close') callback(0);
+          if (event === 'close') {
+            callback(0);
+          }
         }),
         kill: jest.fn(),
       };
       childProcess.spawn.mockReturnValue(mockChild);
 
-      const result = await (agent as any).runCommand('echo test', 'Test command');
+      const result = await (agent as any).commandExecutor.runCommand('echo test', 'Test command');
 
       expect(result).toBe(true);
       expect(childProcess.spawn).toHaveBeenCalledWith('echo test', {
@@ -207,23 +209,263 @@ describe('QAAgent', () => {
     it('should handle command failure', async () => {
       const mockChild = {
         on: jest.fn((event: string, callback: (code: number) => void) => {
-          if (event === 'close') callback(1);
+          if (event === 'close') {
+            callback(1);
+          }
         }),
         kill: jest.fn(),
       };
       childProcess.spawn.mockReturnValue(mockChild);
 
-      const result = await (agent as any).runCommand('failing command', 'Failing command');
+      const result = await (agent as any).commandExecutor.runCommand('failing command', 'Failing command');
 
       expect(result).toBe(false);
     });
 
     it('should handle dry run', async () => {
       const dryRunAgent = new QAAgent({ dryRun: true, projectRoot: mockProjectRoot });
-      const result = await (dryRunAgent as any).runCommand('echo test', 'Test command');
+      const result = await (dryRunAgent as any).commandExecutor.runCommand('echo test', 'Test command');
 
       expect(result).toBe(true);
       expect(childProcess.spawn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('secureReadFile', () => {
+    const fsPromises = require('fs').promises;
+    let mockFileSecurityAnalyzer: any;
+    let mockRiskAssessmentEngine: any;
+    let mockSecurityWarningGenerator: any;
+    let mockLogger: any;
+
+    beforeEach(() => {
+      // Mock the security components
+      mockFileSecurityAnalyzer = {
+        analyzeFile: jest.fn()
+      };
+      mockRiskAssessmentEngine = {
+        assessRisk: jest.fn()
+      };
+      mockSecurityWarningGenerator = {
+        generateWarnings: jest.fn()
+      };
+      mockLogger = {
+        log: jest.fn()
+      };
+
+      // Replace the private properties
+      (agent as any).fileSecurityAnalyzer = mockFileSecurityAnalyzer;
+      (agent as any).riskAssessmentEngine = mockRiskAssessmentEngine;
+      (agent as any).securityWarningGenerator = mockSecurityWarningGenerator;
+      (agent as any).logger = mockLogger;
+
+      // Mock fs.readFile
+      fsPromises.readFile = jest.fn();
+    });
+
+    it('should read a safe file successfully', async () => {
+      const mockSecurityResult = {
+        filePath: '/mock/project/safe.txt',
+        fileSize: 100,
+        metadata: {
+          isBinary: false
+        },
+        riskAssessment: {
+          riskFactors: []
+        }
+      };
+
+      const mockRiskAssessment = {
+        riskLevel: 'LOW' as const,
+        overallScore: 10,
+        riskFactors: [],
+        confidence: 80,
+        recommendations: []
+      };
+
+      const mockWarnings: any[] = [];
+
+      mockFileSecurityAnalyzer.analyzeFile.mockResolvedValue(mockSecurityResult);
+      mockRiskAssessmentEngine.assessRisk.mockReturnValue(mockRiskAssessment);
+      mockSecurityWarningGenerator.generateWarnings.mockReturnValue(mockWarnings);
+      fsPromises.readFile.mockResolvedValue('file content');
+
+      const result = await agent.secureReadFile('safe.txt');
+
+      expect(result.content).toBe('file content');
+      expect(result.securityAnalysis.isSafe).toBe(true);
+      expect(result.securityAnalysis.warnings).toEqual(mockWarnings);
+      expect(mockLogger.log).toHaveBeenCalledWith('INFO', expect.stringContaining('File security analysis passed'));
+    });
+
+    it('should read a file with warnings when allowWithWarnings is true', async () => {
+      const mockSecurityResult = {
+        filePath: '/mock/project/warning.txt',
+        fileSize: 100,
+        metadata: {
+          isBinary: false
+        },
+        riskAssessment: {
+          riskFactors: [{ name: 'Test Warning', score: 30, description: 'Test', evidence: [], isBlocking: false }]
+        }
+      };
+
+      const mockRiskAssessment = {
+        riskLevel: 'MEDIUM' as const,
+        overallScore: 40,
+        riskFactors: [{ name: 'Test Warning', score: 30, description: 'Test', evidence: [], isBlocking: false }],
+        confidence: 80,
+        recommendations: []
+      };
+
+      const mockWarnings = [{
+        title: 'Test Warning',
+        description: 'Test warning description',
+        priority: 'MEDIUM' as const,
+        isBlocking: false,
+        recommendations: []
+      }];
+
+      mockFileSecurityAnalyzer.analyzeFile.mockResolvedValue(mockSecurityResult);
+      mockRiskAssessmentEngine.assessRisk.mockReturnValue(mockRiskAssessment);
+      mockSecurityWarningGenerator.generateWarnings.mockReturnValue(mockWarnings);
+      fsPromises.readFile.mockResolvedValue('file content');
+
+      const result = await agent.secureReadFile('warning.txt', { allowWithWarnings: true });
+
+      expect(result.content).toBe('file content');
+      expect(result.securityAnalysis.isSafe).toBe(false);
+      expect(result.securityAnalysis.warnings).toEqual(mockWarnings);
+      expect(mockLogger.log).toHaveBeenCalledWith('WARNING', expect.stringContaining('Reading file with security warnings'));
+    });
+
+    it('should block reading files with critical security risks in strict mode', async () => {
+      const mockSecurityResult = {
+        filePath: '/mock/project/critical.txt',
+        fileSize: 100,
+        metadata: {
+          isBinary: false
+        },
+        riskAssessment: {
+          riskFactors: [{ name: 'Critical Risk', score: 90, description: 'Critical', evidence: [], isBlocking: true }]
+        }
+      };
+
+      const mockRiskAssessment = {
+        riskLevel: 'CRITICAL' as const,
+        overallScore: 90,
+        riskFactors: [{ name: 'Critical Risk', score: 90, description: 'Critical', evidence: [], isBlocking: true }],
+        confidence: 80,
+        recommendations: []
+      };
+
+      const mockWarnings = [{
+        title: 'Critical Risk',
+        description: 'Critical security risk detected',
+        priority: 'CRITICAL' as const,
+        isBlocking: true,
+        recommendations: []
+      }];
+
+      mockFileSecurityAnalyzer.analyzeFile.mockResolvedValue(mockSecurityResult);
+      mockRiskAssessmentEngine.assessRisk.mockReturnValue(mockRiskAssessment);
+      mockSecurityWarningGenerator.generateWarnings.mockReturnValue(mockWarnings);
+
+      await expect(agent.secureReadFile('critical.txt', { strictMode: true })).rejects.toThrow('CRITICAL security risk detected');
+    });
+
+    it('should block reading files that exceed maxFileSize', async () => {
+      const mockSecurityResult = {
+        filePath: '/mock/project/large.txt',
+        fileSize: 2000000, // 2MB
+        metadata: {
+          isBinary: false
+        },
+        riskAssessment: {
+          riskFactors: []
+        }
+      };
+
+      const mockRiskAssessment = {
+        riskLevel: 'LOW' as const,
+        overallScore: 10,
+        riskFactors: [],
+        confidence: 80,
+        recommendations: []
+      };
+
+      const mockWarnings: any[] = [];
+
+      mockFileSecurityAnalyzer.analyzeFile.mockResolvedValue(mockSecurityResult);
+      mockRiskAssessmentEngine.assessRisk.mockReturnValue(mockRiskAssessment);
+      mockSecurityWarningGenerator.generateWarnings.mockReturnValue(mockWarnings);
+
+      await expect(agent.secureReadFile('large.txt', { maxFileSize: 1000000 })).rejects.toThrow('File size (2000000 bytes) exceeds maximum allowed size (1000000 bytes)');
+    });
+
+    it('should read binary files as Buffer', async () => {
+      const mockSecurityResult = {
+        filePath: '/mock/project/binary.dat',
+        fileSize: 100,
+        metadata: {
+          isBinary: true
+        },
+        riskAssessment: {
+          riskFactors: []
+        }
+      };
+
+      const mockRiskAssessment = {
+        riskLevel: 'LOW' as const,
+        overallScore: 10,
+        riskFactors: [],
+        confidence: 80,
+        recommendations: []
+      };
+
+      const mockWarnings: any[] = [];
+      const binaryContent = Buffer.from('binary data');
+
+      mockFileSecurityAnalyzer.analyzeFile.mockResolvedValue(mockSecurityResult);
+      mockRiskAssessmentEngine.assessRisk.mockReturnValue(mockRiskAssessment);
+      mockSecurityWarningGenerator.generateWarnings.mockReturnValue(mockWarnings);
+      fsPromises.readFile.mockResolvedValue(binaryContent);
+
+      const result = await agent.secureReadFile('binary.dat');
+
+      expect(result.content).toBeInstanceOf(Buffer);
+      expect(result.content).toBe(binaryContent);
+      expect(result.securityAnalysis.isSafe).toBe(true);
+    });
+
+    it('should handle file read errors', async () => {
+      const mockSecurityResult = {
+        filePath: '/mock/project/error.txt',
+        fileSize: 100,
+        metadata: {
+          isBinary: false
+        },
+        riskAssessment: {
+          riskFactors: []
+        }
+      };
+
+      const mockRiskAssessment = {
+        riskLevel: 'LOW' as const,
+        overallScore: 10,
+        riskFactors: [],
+        confidence: 80,
+        recommendations: []
+      };
+
+      const mockWarnings: any[] = [];
+
+      mockFileSecurityAnalyzer.analyzeFile.mockResolvedValue(mockSecurityResult);
+      mockRiskAssessmentEngine.assessRisk.mockReturnValue(mockRiskAssessment);
+      mockSecurityWarningGenerator.generateWarnings.mockReturnValue(mockWarnings);
+      fsPromises.readFile.mockRejectedValue(new Error('File not found'));
+
+      await expect(agent.secureReadFile('error.txt')).rejects.toThrow('Failed to read file: Error: File not found');
     });
   });
 });

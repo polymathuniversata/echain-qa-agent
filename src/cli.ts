@@ -2,10 +2,16 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { QAAgent } from './qa-agent';
+import { QAAgent } from './qa-agent.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 // Read version from package.json
-const packageJson = require('../package.json');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJsonPath = join(__dirname, '..', 'package.json');
+const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 const version = packageJson.version;
 
 const program = new Command();
@@ -21,11 +27,23 @@ program
   .option('-d, --dry-run', 'simulate QA checks without actual execution')
   .option('-v, --verbose', 'enable verbose output')
   .option('-q, --quiet', 'suppress non-error output for script wrapping')
-  .action(async (options) => {
+  .option('--skip-linting', 'skip code linting checks')
+  .option('--skip-testing', 'skip automated testing')
+  .option('--skip-build', 'skip build verification')
+  .option('--skip-security', 'skip security vulnerability scanning')
+  .option('--skip-plugins', 'skip custom plugin execution')
+  .option('--skip-docs', 'skip documentation updates')
+  .action(async options => {
     const agent = new QAAgent({
       dryRun: options.dryRun,
       verbose: options.verbose,
-      quiet: options.quiet
+      quiet: options.quiet,
+      skipLinting: options.skipLinting,
+      skipTesting: options.skipTesting,
+      skipBuild: options.skipBuild,
+      skipSecurity: options.skipSecurity,
+      skipPlugins: options.skipPlugins,
+      skipDocs: options.skipDocs,
     });
 
     try {
@@ -41,7 +59,7 @@ program
   .command('lint')
   .description('Run only linting checks')
   .option('-f, --fix', 'automatically fix linting issues')
-  .action(async (options) => {
+  .action(async options => {
     const agent = new QAAgent();
     try {
       await agent.runLinting(options.fix);
@@ -215,7 +233,7 @@ program
 program
   .command('install-plugin <pluginName>')
   .description('Install a specific plugin from the registry')
-  .action(async (pluginName) => {
+  .action(async pluginName => {
     const agent = new QAAgent();
     try {
       console.log(chalk.blue(`\n⬇️ Installing plugin: ${pluginName}`));

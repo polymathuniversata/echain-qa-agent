@@ -96,6 +96,9 @@ Use the CI pipeline script:
 
 # With environment variables
 DRY_RUN=true VERBOSE=true STRICT_MODE=false ./scripts/ci-pipeline.sh
+
+# Skip specific checks for faster CI runs
+SKIP_TESTING=true SKIP_BUILD=true ./scripts/ci-pipeline.sh
 ```
 
 ### VS Code Integration

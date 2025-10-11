@@ -1,0 +1,65 @@
+{
+  "project": {
+    "name": "CIProject",
+    "type": "blockchain",
+    "frameworks": ["hardhat"]
+  },
+  "checks": {
+    "codeQuality": {
+      "enabled": true,
+      "fix": false,
+      "solidity": {
+        "compiler": "0.8.19"
+      },
+      "typescript": {
+        "strict": true
+      }
+    },
+    "testing": {
+      "enabled": true,
+      "unit": {
+        "command": "npx hardhat test",
+        "bail": true,
+        "timeout": 60000
+      },
+      "coverage": {
+        "command": "npx hardhat coverage",
+        "threshold": {
+          "branches": 75,
+          "functions": 80,
+          "lines": 75,
+          "statements": 75
+        }
+      }
+    },
+    "security": {
+      "enabled": true,
+      "slither": {
+        "excludeDependencies": true,
+        "failOn": "high"
+      }
+    },
+    "build": {
+      "enabled": true,
+      "command": "npx hardhat compile",
+      "verify": true
+    }
+  },
+  "reporting": {
+    "format": "junit",
+    "output": "./test-results",
+    "includeDetails": true
+  },
+  "caching": {
+    "enabled": true,
+    "ttl": {
+      "results": "24h",
+      "security": "24h"
+    }
+  },
+  "performance": {
+    "parallel": true,
+    "maxConcurrency": 2,
+    "failFast": true
+  }
+}

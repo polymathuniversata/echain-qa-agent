@@ -61,6 +61,123 @@ bun add -g echain-qa-agent
 
 *Run `echain-qa setup-hooks` or `echain setup-hooks` in your project directory to enable automatic git hooks.*
 
+### MCP Server Installation (For LLM/Coding Agent Integration)
+
+The QA Agent now includes MCP (Model Context Protocol) server support for seamless integration with LLMs and coding agents:
+
+```bash
+# Install globally for MCP server access
+npm install -g echain-qa-agent
+
+# Start MCP server
+echain-qa-mcp
+```
+
+### API Server Installation (For Remote Access)
+
+For remote access and integration with other tools:
+
+```bash
+# Install dependencies
+npm install
+
+# Start API server (default port 3001)
+npm run api-server
+
+# Or start on custom port
+npm run api-server -- 8080
+```
+
+## 🤖 LLM & Coding Agent Integration
+
+The QA Agent now provides multiple integration options for LLMs and coding agents:
+
+### MCP (Model Context Protocol) Server
+
+Perfect for integration with AI assistants and coding tools that support MCP. See [integration examples](./integration-examples/) for setup instructions.
+
+**Supported MCP Clients:**
+- [Claude Desktop](./integration-examples/claude-desktop/)
+- [VS Code](./integration-examples/vscode/)
+- [Cursor](./integration-examples/cursor/)
+- [Windsurf](./integration-examples/windsurf/)
+- [Other MCP Clients](./integration-examples/other-clients/)
+
+```bash
+# Start MCP server
+echain-qa-mcp
+
+# Available MCP tools:
+# - run_qa_checks: Run comprehensive QA checks
+# - run_linting: Run only linting checks
+# - run_tests: Run only testing suite
+# - run_security_checks: Run only security scanning
+# - run_build_checks: Run only build verification
+# - get_qa_report: Get latest QA report
+# - initialize_qa_config: Initialize QA configuration
+# - setup_git_hooks: Install git hooks
+# - get_project_analysis: Analyze project structure
+# - troubleshoot_issues: Guided troubleshooting
+```
+
+**Note:** MCP server implementation is complete and ready for integration. The server provides stdio-based communication for MCP-compatible clients.
+
+### HTTP REST API
+
+For programmatic access and remote integration:
+
+```bash
+# Start API server
+npm run api-server
+
+# API Endpoints:
+# POST /api/qa/run - Run comprehensive QA checks
+# POST /api/qa/lint - Run linting checks
+# POST /api/qa/test - Run tests
+# POST /api/qa/security - Run security checks
+# POST /api/qa/build - Run build verification
+# GET /api/qa/report - Get QA report
+# POST /api/qa/init - Initialize QA config
+# POST /api/qa/hooks - Setup git hooks
+# GET /api/qa/analyze - Project analysis
+# GET /health - Health check
+```
+
+### Example API Usage
+
+```javascript
+// Run comprehensive QA checks
+fetch('http://localhost:3001/api/qa/run', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    projectRoot: '/path/to/project',
+    skipLinting: false,
+    skipTesting: false,
+    dryRun: false
+  })
+})
+.then(res => res.json())
+.then(result => console.log(result));
+```
+
+### TypeScript/JavaScript Integration
+
+For direct programmatic access in your applications:
+
+```typescript
+import { QAAgent } from 'echain-qa-agent';
+
+const qaAgent = new QAAgent({
+  projectRoot: '/path/to/project',
+  skipLinting: false,
+  skipTesting: false
+});
+
+const results = await qaAgent.runFullSuite();
+console.log(`QA checks ${results.errors > 0 ? 'failed' : 'passed'}`);
+```
+
 ## Quick Start
 
 1. **Install the QA agent locally** (recommended):
@@ -193,6 +310,11 @@ echain-qa run --quiet
 
 # Verbose output
 echain-qa run --verbose
+
+# Skip specific checks for faster runs
+echain-qa run --skip-testing --skip-build
+echain-qa run --skip-linting --skip-security
+echain-qa run --skip-plugins --skip-docs
 ```
 
 ### Programmatic Usage

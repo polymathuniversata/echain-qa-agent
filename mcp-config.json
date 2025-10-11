@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "echain-qa-agent": {
+      "command": "echain-qa-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}

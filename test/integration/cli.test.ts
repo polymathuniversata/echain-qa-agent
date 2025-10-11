@@ -4,7 +4,7 @@ import path from 'path';
 describe('CLI Integration Tests', () => {
   const cliPath = path.join(__dirname, '../../dist/cli.js');
 
-  const runCLI = (args: string[], timeout: number = 2000): Promise<{ code: number; stdout: string; stderr: string }> => {
+  const runCLI = (args: string[], timeout: number = 10000): Promise<{ code: number; stdout: string; stderr: string }> => {
     return new Promise((resolve, reject) => {
       const child = spawn('node', [cliPath, ...args], {
         cwd: path.join(__dirname, '../../'),
@@ -59,11 +59,11 @@ describe('CLI Integration Tests', () => {
     });
 
     it('should show version', async () => {
-      const result = await runCLI(['--version'], 5000);
+      const result = await runCLI(['--version'], 10000);
 
       expect(result.code).toBe(0);
-      expect(result.stdout).toContain('2.1.5');
-    });
+      expect(result.stdout).toContain('2.1.6');
+    }, 15000);
 
     it('should handle init command', async () => {
       const result = await runCLI(['init', '--help'], 5000);

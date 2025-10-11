@@ -1,0 +1,52 @@
+{
+  "name": "echain-qa-mcp-installer",
+  "displayName": "Echain QA MCP Installer",
+  "description": "Easily install and configure the Echain QA Agent MCP server in VS Code",
+  "version": "0.0.2",
+  "publisher": "polymathuniversata",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/polymathuniversata/echain-qa-agent.git",
+    "directory": "vscode-extension"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "echain-qa-mcp.install",
+        "title": "Install Echain QA MCP Server"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "files": [
+    "out/",
+    "icon.png",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "devDependencies": {
+    "@types/node": "16.x",
+    "@types/vscode": "^1.74.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vscode/vsce": "^3.6.2",
+    "eslint": "^8.0.0",
+    "typescript": "^4.0.0"
+  }
+}

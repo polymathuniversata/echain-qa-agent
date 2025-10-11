@@ -27,6 +27,13 @@ jest.mock('child_process', () => ({
   spawn: jest.fn(),
 }));
 
+// Mock inquirer
+jest.mock('inquirer', () => ({
+  default: {
+    prompt: jest.fn()
+  }
+}));
+
 jest.mock('cli-progress', () => ({
   SingleBar: jest.fn().mockImplementation(() => ({
     start: jest.fn(),
@@ -53,7 +60,49 @@ describe('QA Agent - End-to-End Integration Tests', () => {
       fsExtra.ensureDir.mockResolvedValue(undefined);
       fsExtra.writeFile.mockResolvedValue(undefined);
 
-      // Mock config with strict quality gates
+      // Mock config with strict quality gates using fs.readFile (used by ConfigurationManager)
+      jest.spyOn(fs, 'readFile').mockImplementation((filePath: any, _options?: any) => {
+        const pathStr = typeof filePath === 'string' ? filePath : filePath.toString();
+        if (pathStr.includes('.qa-config.json')) {
+          return Promise.resolve(JSON.stringify({
+            version: "2.0.0",
+            project: {
+              name: "test-project",
+              type: "blockchain"
+            },
+            checks: {
+              linting: true,
+              testing: true,
+              security: true,
+              build: true,
+              performance: false
+            },
+            qualityGates: {
+              failOnLintErrors: true,
+              failOnTestFailures: true,
+              failOnBuildFailures: true,
+              failOnSecurityVulnerabilities: true,
+              failOnPerformanceIssues: false,
+              requireTests: true,
+              requireTestCoverage: true,
+              minTestCoverage: 90
+            }
+          }));
+        }
+        if (pathStr.includes('coverage-summary.json')) {
+          return Promise.resolve(JSON.stringify({
+            total: {
+              lines: { pct: 95 },
+              statements: { pct: 94 },
+              branches: { pct: 92 },
+              functions: { pct: 96 }
+            }
+          }));
+        }
+        return Promise.resolve('');
+      });
+
+      // Also mock fsExtra.readFile for backward compatibility
       fsExtra.readFile.mockImplementation((filePath: string) => {
         if (filePath.includes('.qa-config.json')) {
           return Promise.resolve(JSON.stringify({
@@ -109,7 +158,9 @@ describe('QA Agent - End-to-End Integration Tests', () => {
       const childProcess = require('child_process');
       childProcess.spawn.mockImplementation(() => ({
         on: jest.fn((event: string, callback: (code: number) => void) => {
-          if (event === 'close') callback(0);
+          if (event === 'close') {
+            callback(0);
+          }
         }),
         kill: jest.fn(),
       }));
@@ -121,8 +172,43 @@ describe('QA Agent - End-to-End Integration Tests', () => {
     });
 
     it('should fail when coverage is insufficient despite good tests', async () => {
-      // Mock low coverage
+      // Mock low coverage using both fs.readFile and fsExtra.readFile
+      jest.spyOn(fs, 'readFile').mockImplementation((filePath: any, _options?: any) => {
+        const pathStr = typeof filePath === 'string' ? filePath : filePath.toString();
+        if (pathStr.includes('.qa-config.json')) {
+          return Promise.resolve(JSON.stringify({
+            version: "2.0.0",
+            qualityGates: {
+              requireTests: true,
+              requireTestCoverage: true,
+              minTestCoverage: 90
+            }
+          }));
+        }
+        if (pathStr.includes('coverage-summary.json')) {
+          return Promise.resolve(JSON.stringify({
+            total: {
+              lines: { pct: 75 },
+              statements: { pct: 76 },
+              branches: { pct: 70 },
+              functions: { pct: 74 }
+            }
+          }));
+        }
+        return Promise.resolve('');
+      });
+
       fsExtra.readFile.mockImplementation((filePath: string) => {
+        if (filePath.includes('.qa-config.json')) {
+          return Promise.resolve(JSON.stringify({
+            version: "2.0.0",
+            qualityGates: {
+              requireTests: true,
+              requireTestCoverage: true,
+              minTestCoverage: 90
+            }
+          }));
+        }
         if (filePath.includes('coverage-summary.json')) {
           return Promise.resolve(JSON.stringify({
             total: {
@@ -133,14 +219,7 @@ describe('QA Agent - End-to-End Integration Tests', () => {
             }
           }));
         }
-        return Promise.resolve(JSON.stringify({
-          version: "2.0.0",
-          qualityGates: {
-            requireTests: true,
-            requireTestCoverage: true,
-            minTestCoverage: 90
-          }
-        }));
+        return Promise.resolve('');
       });
 
       const glob = require('glob');
@@ -154,7 +233,9 @@ describe('QA Agent - End-to-End Integration Tests', () => {
       const childProcess = require('child_process');
       childProcess.spawn.mockImplementation(() => ({
         on: jest.fn((event: string, callback: (code: number) => void) => {
-          if (event === 'close') callback(0);
+          if (event === 'close') {
+            callback(0);
+          }
         }),
         kill: jest.fn(),
       }));
@@ -215,6 +296,19 @@ describe('QA Agent - End-to-End Integration Tests', () => {
 
     it('should continue execution when individual checks fail', async () => {
       fsExtra.pathExists.mockResolvedValue(true);
+      jest.spyOn(fs, 'readFile').mockImplementation((filePath: any) => {
+        const pathStr = typeof filePath === 'string' ? filePath : filePath.toString();
+        if (pathStr.includes('.qa-config.json')) {
+          return Promise.resolve(JSON.stringify({
+            version: "2.0.0",
+            qualityGates: {
+              failOnLintErrors: false, // Allow linting to fail
+              requireTests: false
+            }
+          }));
+        }
+        return Promise.resolve('');
+      });
       fsExtra.readFile.mockResolvedValue(JSON.stringify({
         version: "2.0.0",
         qualityGates: {
@@ -277,6 +371,16 @@ describe('QA Agent - End-to-End Integration Tests', () => {
       const glob = require('glob');
 
       fsExtra.pathExists.mockResolvedValue(true);
+      jest.spyOn(fs, 'readFile').mockImplementation((filePath: any) => {
+        const pathStr = typeof filePath === 'string' ? filePath : filePath.toString();
+        if (pathStr.includes('.qa-config.json')) {
+          return Promise.resolve(JSON.stringify({
+            version: "2.0.0",
+            qualityGates: { requireTests: true }
+          }));
+        }
+        return Promise.resolve('');
+      });
       fsExtra.readFile.mockResolvedValue(JSON.stringify({
         version: "2.0.0",
         qualityGates: { requireTests: true }
@@ -295,7 +399,9 @@ describe('QA Agent - End-to-End Integration Tests', () => {
       const childProcess = require('child_process');
       childProcess.spawn.mockImplementation(() => ({
         on: jest.fn((event: string, callback: (code: number) => void) => {
-          if (event === 'close') callback(0); // Success for all commands
+          if (event === 'close') {
+            callback(0); // Success for all commands
+          }
         }),
         kill: jest.fn(),
       }));

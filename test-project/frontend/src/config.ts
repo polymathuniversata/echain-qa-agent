@@ -1,16 +1,16 @@
-// Configuration file with sensitive data
+// Configuration file with environment variables (NEVER commit real secrets!)
 export const config = {
   database: {
-    host: 'localhost',
-    port: 5432,
-    username: 'admin',
-    password: 'super_secret_password_123',
-    apiKey: 'sk-1234567890abcdef',
-    jwtSecret: 'my_jwt_secret_key_that_should_not_be_exposed'
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5432'),
+    username: process.env.DB_USERNAME || 'admin',
+    password: process.env.DB_PASSWORD || '[REDACTED - USE ENVIRONMENT VARIABLE]',
+    apiKey: process.env.DB_API_KEY || '[REDACTED - USE ENVIRONMENT VARIABLE]',
+    jwtSecret: process.env.JWT_SECRET || '[REDACTED - USE ENVIRONMENT VARIABLE]'
   },
   externalServices: {
-    stripeSecretKey: 'sk_test_FAKE_STRIPE_TEST_KEY_FOR_TESTING_ONLY',
-    awsAccessKeyId: 'AKIAIOSFODNN7EXAMPLE',
-    awsSecretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+    stripeSecretKey: process.env.STRIPE_SECRET_KEY || '[REDACTED - USE ENVIRONMENT VARIABLE]',
+    awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID || '[REDACTED - USE ENVIRONMENT VARIABLE]',
+    awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '[REDACTED - USE ENVIRONMENT VARIABLE]'
   }
 };

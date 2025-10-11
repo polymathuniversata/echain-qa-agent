@@ -23,11 +23,6 @@
     "prePush": true,
     "autoInstall": true,
     "wrapScripts": true,
-    "scriptsToWrap": [
-      "build",
-      "start",
-      "dev",
-      "test"
-    ]
+    "scriptsToWrap": ["build", "start", "dev", "test"]
   }
 }

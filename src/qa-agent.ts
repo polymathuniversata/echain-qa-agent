@@ -1,405 +1,310 @@
-import { exec, spawn } from 'child_process';
-import { promises as fs } from 'fs';
+
 import path from 'path';
 import { globSync } from 'glob';
 import chalk from 'chalk';
-import { pathExists, ensureDir, readFile, writeFile } from 'fs-extra';
-import cliProgress from 'cli-progress';
-import Ajv from 'ajv';
-import crypto from 'crypto';
+import fse from 'fs-extra';
+import * as fs from 'fs/promises';
 
-// JSON Schema for .qa-config.json validation
-const qaConfigSchema = {
-  type: 'object',
-  properties: {
-    version: { type: 'string', pattern: '^\\d+\\.\\d+\\.\\d+$' },
-    project: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', minLength: 1 },
-        type: { type: 'string', enum: ['blockchain', 'frontend', 'fullstack'] },
-        frameworks: {
-          type: 'array',
-          items: { type: 'string' }
-        }
-      },
-      required: ['name', 'type']
-    },
-    checks: {
-      type: 'object',
-      properties: {
-        linting: { type: 'boolean' },
-        testing: { type: 'boolean' },
-        security: { type: 'boolean' },
-        build: { type: 'boolean' },
-        performance: { type: 'boolean' }
-      }
-    },
-    paths: {
-      type: 'object',
-      properties: {
-        frontend: { type: 'string' },
-        blockchain: { type: 'string' },
-        docs: { type: 'string' },
-        tests: { type: 'string' }
-      }
-    },
-    hooks: {
-      type: 'object',
-      properties: {
-        preCommit: { type: 'boolean' },
-        prePush: { type: 'boolean' },
-        autoInstall: { type: 'boolean' },
-        wrapScripts: { type: 'boolean' },
-        scriptsToWrap: {
-          type: 'array',
-          items: { type: 'string' }
-        }
-      }
-    }
-  },
-  required: ['version', 'project']
-};
+// Import new modules
+import { Logger } from './logger.js';
+import { CommandExecutor } from './command-executor.js';
+import { ConfigurationManager } from './configuration-manager.js';
+import { CacheManager } from './cache-manager.js';
+import { PluginManager } from './plugin-manager.js';
+import { CodeQualityChecker } from './code-quality-checker.js';
+import { TestRunner } from './test-runner.js';
+import { SecurityScanner } from './security-scanner.js';
+import { BuildVerifier } from './build-verifier.js';
+import { GitHooksManager } from './git-hooks-manager.js';
+import { ProjectDetector } from './project-detector.js';
+import { ReportGenerator } from './report-generator.js';
+import { InteractiveSetup } from './interactive-setup.js';
 
+// Import new modules
+import { PluginBrowser } from './plugin-browser.js';
+import { TroubleshootingWizard } from './troubleshooting-wizard.js';
+
+// Import security modules
+import { BasicFileSecurityAnalyzer } from './security/FileSecurityAnalyzer.js';
+import { RiskAssessmentEngine } from './security/RiskAssessmentEngine.js';
+import { SecurityWarningGenerator } from './security/SecurityWarningGenerator.js';
+
+// Import result types
+import { CodeQualityResults } from './code-quality-checker.js';
+import { TestResults } from './test-runner.js';
+import { SecurityResults } from './security-scanner.js';
+import { BuildResults } from './build-verifier.js';
+
+/**
+ * Configuration options for the QA Agent
+ */
 export interface QAAgentOptions {
+  /** Whether to run in dry-run mode (no actual execution) */
   dryRun?: boolean;
+  /** Enable verbose logging output */
   verbose?: boolean;
+  /** Suppress non-error output */
   quiet?: boolean;
+  /** Root directory of the project to analyze */
   projectRoot?: string;
+  /** Skip linting checks */
+  skipLinting?: boolean;
+  /** Skip test execution */
+  skipTesting?: boolean;
+  /** Skip build verification */
+  skipBuild?: boolean;
+  /** Skip security checks */
+  skipSecurity?: boolean;
+  /** Skip plugin execution */
+  skipPlugins?: boolean;
+  /** Skip documentation updates */
+  skipDocs?: boolean;
 }
 
+/**
+ * Results summary from a QA run
+ */
 export interface QAResults {
+  /** Number of errors encountered */
   errors: number;
+  /** Number of warnings encountered */
   warnings: number;
+  /** Duration of the QA run in seconds */
   duration: number;
+  /** Timestamp when the QA run completed */
   timestamp: Date;
 }
 
+/**
+ * Cache entry for QA results
+ */
 export interface QACacheEntry {
+  /** Hash of the content that was cached */
   hash: string;
+  /** Results that were cached */
   results: QAResults;
+  /** When the results were cached */
   timestamp: Date;
+  /** When the cache entry expires */
   expiresAt: Date;
 }
 
+/**
+ * Plugin interface for extending QA functionality
+ */
 export interface QAPlugin {
+  /** Name of the plugin */
   name: string;
+  /** Version of the plugin */
   version: string;
+  /** Description of what the plugin does */
   description?: string;
+  /** Function to run the plugin */
   run: (qaAgent: QAAgent) => Promise<QAResults>;
 }
 
+/**
+ * Cache structure for different types of QA results
+ */
 export interface QACache {
+  /** Cached linting results */
   linting?: QACacheEntry;
+  /** Cached testing results */
   testing?: QACacheEntry;
+  /** Cached security results */
   security?: QACacheEntry;
+  /** Cached build results */
   build?: QACacheEntry;
 }
 
+/**
+ * Main QA Agent class that orchestrates comprehensive quality assurance checks
+ * for blockchain and frontend projects. Provides modular architecture with
+ * dependency injection for all QA components.
+ */
 export class QAAgent {
   private options: Required<QAAgentOptions>;
   private projectRoot: string;
-  private qaLogPath: string;
   private startTime: number;
-  private ajv: Ajv;
-  private cachePath: string;
-  private cache: QACache;
-  private pluginsPath: string;
-  private plugins: Map<string, QAPlugin>;
-  private pluginConfigs: { [key: string]: any };
+  private pluginConfigs: { [key: string]: any } = {};
 
+  // Core modules
+  private logger: Logger;
+  private commandExecutor: CommandExecutor;
+  private configManager: ConfigurationManager;
+  private cacheManager: CacheManager;
+  private pluginManager: PluginManager;
+  private codeQualityChecker: CodeQualityChecker;
+  private testRunner: TestRunner;
+  private securityScanner: SecurityScanner;
+  private buildVerifier: BuildVerifier;
+  private gitHooksManager: GitHooksManager;
+  private projectDetector: ProjectDetector;
+  private reportGenerator: ReportGenerator;
+  private interactiveSetup: InteractiveSetup;
+
+  // Security modules for secure file reading
+  private fileSecurityAnalyzer: BasicFileSecurityAnalyzer;
+  private riskAssessmentEngine: RiskAssessmentEngine;
+  private securityWarningGenerator: SecurityWarningGenerator;
+
+  /**
+   * Creates a new QA Agent instance with the specified options
+   * @param options Configuration options for the QA agent
+   */
   constructor(options: QAAgentOptions = {}) {
     this.options = {
       dryRun: false,
       verbose: false,
       quiet: false,
       projectRoot: process.cwd(),
-      ...options
+      skipLinting: false,
+      skipTesting: false,
+      skipBuild: false,
+      skipSecurity: false,
+      skipPlugins: false,
+      skipDocs: false,
+      ...options,
     };
 
     this.projectRoot = this.options.projectRoot;
-    this.qaLogPath = path.join(this.projectRoot, 'docs', 'qalog.md');
     this.startTime = Date.now();
-    this.ajv = new Ajv({ allErrors: true });
-    this.cachePath = path.join(this.projectRoot, '.qa-cache.json');
-    this.cache = {};
-    this.pluginsPath = path.join(this.projectRoot, '.qa-plugins');
-    this.plugins = new Map();
-    this.pluginConfigs = {};
+
+    // Initialize core modules
+    const qaLogPath = path.join(this.projectRoot, 'docs', 'qalog.md');
+    this.logger = new Logger({
+      verbose: this.options.verbose,
+      quiet: this.options.quiet,
+      projectRoot: this.projectRoot,
+      qaLogPath,
+    });
+
+    this.commandExecutor = new CommandExecutor(this.projectRoot, this.options.dryRun);
+    this.configManager = new ConfigurationManager(this.projectRoot);
+    this.cacheManager = new CacheManager(this.projectRoot);
+    this.pluginManager = new PluginManager(path.join(this.projectRoot, '.qa-plugins'), this);
+    this.codeQualityChecker = new CodeQualityChecker(this.projectRoot, this.commandExecutor);
+    this.testRunner = new TestRunner(this.projectRoot, this.commandExecutor);
+    this.securityScanner = new SecurityScanner(this.projectRoot, this.commandExecutor);
+    this.buildVerifier = new BuildVerifier(this.projectRoot, this.commandExecutor);
+    this.gitHooksManager = new GitHooksManager(this.projectRoot, this.commandExecutor);
+    this.projectDetector = new ProjectDetector(this.projectRoot);
+    this.reportGenerator = new ReportGenerator(this.projectRoot);
+    this.interactiveSetup = new InteractiveSetup(this.projectRoot);
+
+    // Initialize security modules
+    this.fileSecurityAnalyzer = new BasicFileSecurityAnalyzer();
+    this.riskAssessmentEngine = new RiskAssessmentEngine();
+    this.securityWarningGenerator = new SecurityWarningGenerator();
   }
 
-  private log(level: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR', message: string): void {
-    const timestamp = new Date().toLocaleTimeString();
-    const redactedMessage = this.redactSecrets(message);
-    const logEntry = `| ${timestamp} | ${level} | ${redactedMessage} |`;
-
-    if ((this.options.verbose || level === 'ERROR') && !this.options.quiet) {
-      const color = level === 'ERROR' ? chalk.red :
-                   level === 'WARNING' ? chalk.yellow :
-                   level === 'SUCCESS' ? chalk.green : chalk.blue;
-      console.log(color(`${timestamp} | ${level} | ${redactedMessage}`));
-    }
-
-    // Append to QA log
-    this.appendToLog(logEntry);
+  // Public getters for SecurePluginLoader access
+  /**
+   * Gets the project root directory
+   * @returns The absolute path to the project root
+   */
+  public getProjectRoot(): string {
+    return this.projectRoot;
   }
 
-  private redactSecrets(message: string): string {
-    return message
-      .replace(/(api[_-]?key[:= ]+)(0x[0-9a-fA-F]{8,})/gi, '$1[REDACTED]')
-      .replace(/(private[_-]?key[:= ]+)(0x[0-9a-fA-F]{64,})/gi, '$1[REDACTED]')
-      .replace(/(password[:= ]+).*/gi, '$1[REDACTED]')
-      .replace(/(secret[:= ]+).*/gi, '$1[REDACTED]')
-      .replace(/(token[:= ]+).*/gi, '$1[REDACTED]');
-  }
-
-  private async loadCache(): Promise<void> {
-    try {
-      if (await pathExists(this.cachePath)) {
-        const cacheContent = await readFile(this.cachePath, 'utf-8');
-        this.cache = JSON.parse(cacheContent);
-
-        // Clean expired entries
-        const now = new Date();
-        Object.keys(this.cache).forEach(key => {
-          const entry = this.cache[key as keyof QACache];
-          if (entry && entry.expiresAt < now) {
-            delete this.cache[key as keyof QACache];
-          }
-        });
-      }
-    } catch (error) {
-      // Cache loading failed, start with empty cache
-      this.cache = {};
-    }
-  }
-
-  private async saveCache(): Promise<void> {
-    try {
-      await writeFile(this.cachePath, JSON.stringify(this.cache, null, 2));
-    } catch (error) {
-      // Silently fail if cache saving fails
-    }
-  }
-
-  private async generateFileHash(filePath: string): Promise<string> {
-    try {
-      const content = await readFile(filePath, 'utf-8');
-      return crypto.createHash('md5').update(content).digest('hex');
-    } catch (error) {
-      return '';
-    }
-  }
-
-  private async generateProjectHash(): Promise<string> {
-    const files = [
-      'package.json',
-      'tsconfig.json',
-      'hardhat.config.js',
-      'hardhat.config.ts',
-      'foundry.toml',
-      'truffle-config.js',
-      '.qa-config.json'
-    ];
-
-    let combinedHash = '';
-    for (const file of files) {
-      const filePath = path.join(this.projectRoot, file);
-      if (await pathExists(filePath)) {
-        combinedHash += await this.generateFileHash(filePath);
-      }
-    }
-
-    return crypto.createHash('md5').update(combinedHash).digest('hex');
-  }
-
-  private async getCachedResult(checkType: keyof QACache): Promise<QAResults | null> {
-    const entry = this.cache[checkType];
-    if (!entry) return null;
-
-    const currentHash = await this.generateProjectHash();
-    if (entry.hash !== currentHash) return null;
-
-    if (entry.expiresAt < new Date()) return null;
-
-    return entry.results;
-  }
-
-  private async setCachedResult(checkType: keyof QACache, results: QAResults): Promise<void> {
-    const hash = await this.generateProjectHash();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
-    this.cache[checkType] = {
-      hash,
-      results,
-      timestamp: new Date(),
-      expiresAt
-    };
-
-    await this.saveCache();
-  }
-
-  private async validateConfig(config: any): Promise<boolean> {
-    const validate = this.ajv.compile(qaConfigSchema);
-    const valid = validate(config);
-
-    if (!valid) {
-      this.log('ERROR', 'Invalid .qa-config.json configuration:');
-      validate.errors?.forEach(error => {
-        this.log('ERROR', `  ${error.instancePath}: ${error.message}`);
-      });
+  /**
+   * Runs a command with security validation and logging
+   * @param command The command to execute
+   * @param description Description of what the command does
+   * @param timeout Maximum execution time in milliseconds (default: 300000)
+   * @returns Promise resolving to true if command succeeded
+   */
+  public async runCommandPublic(
+    command: string,
+    description: string,
+    timeout?: number
+  ): Promise<boolean> {
+    // Sanitize command input for security
+    const sanitizedCommand = this.commandExecutor.sanitizeCommand(command);
+    if (!this.commandExecutor.isCommandSafe(sanitizedCommand)) {
+      this.logger.log('ERROR', `Unsafe command blocked: ${command}`);
       return false;
     }
-
-    this.log('SUCCESS', 'Configuration validation passed');
-    return true;
+    return this.commandExecutor.runCommand(sanitizedCommand, description, timeout);
   }
 
-  private async loadQaConfig(): Promise<any | null> {
-    const configPath = path.join(this.projectRoot, '.qa-config.json');
+  /**
+   * Loads QA configuration from disk
+   * @returns Promise resolving to the configuration object or null if not found
+   */
+  public async loadQaConfigPublic(): Promise<any | null> {
+    return this.configManager.loadQaConfig();
+  }
 
-    if (!await pathExists(configPath)) {
-      return null;
-    }
+  /**
+   * Logs a message with the specified level
+   * @param level Log level (INFO, SUCCESS, WARNING, ERROR)
+   * @param message Message to log
+   */
+  public logPublic(level: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR', message: string): void {
+    return this.logger.log(level, message);
+  }
 
+  /**
+   * Appends an entry to the QA log file
+   * @param entry Log entry to append
+   */
+  public async appendToLog(entry: string): Promise<void> {
+    // Access the private appendToLog method through a workaround or add a public method to Logger
+    // For now, we'll implement it directly
     try {
-      const configContent = await readFile(configPath, 'utf-8');
-      return JSON.parse(configContent);
-    } catch (error) {
-      this.log('ERROR', `Failed to load QA configuration: ${error}`);
-      throw error;
-    }
-  }
-
-  async loadPlugins(): Promise<void> {
-    try {
-      if (!await pathExists(this.pluginsPath)) {
-        return; // No plugins directory
-      }
-
-      const pluginFiles = globSync('**/*.{js,ts}', {
-        cwd: this.pluginsPath,
-        absolute: false
-      });
-
-      for (const pluginFile of pluginFiles) {
-        try {
-          const pluginPath = path.join(this.pluginsPath, pluginFile);
-          const pluginModule = require(pluginPath);
-
-          // Check if it's a valid plugin
-          if (pluginModule && typeof pluginModule.run === 'function' && pluginModule.name) {
-            const plugin: QAPlugin = {
-              name: pluginModule.name,
-              version: pluginModule.version || '1.0.0',
-              description: pluginModule.description,
-              run: pluginModule.run.bind(null, this)
-            };
-
-            this.plugins.set(plugin.name, plugin);
-            this.log('INFO', `Loaded plugin: ${plugin.name} v${plugin.version}`);
-          }
-        } catch (error) {
-          this.log('WARNING', `Failed to load plugin ${pluginFile}: ${error}`);
-        }
-      }
-    } catch (error) {
-      this.log('WARNING', `Plugin loading failed: ${error}`);
-    }
-  }
-
-  async runPlugins(): Promise<QAResults> {
-    let totalErrors = 0;
-    let totalWarnings = 0;
-    const startTime = Date.now();
-
-    for (const [name, plugin] of this.plugins) {
-      try {
-        this.log('INFO', `Running plugin: ${name}`);
-        const results = await plugin.run(this);
-
-        totalErrors += results.errors;
-        totalWarnings += results.warnings;
-
-        if (results.errors > 0) {
-          this.log('ERROR', `Plugin ${name} failed with ${results.errors} errors`);
-        } else if (results.warnings > 0) {
-          this.log('WARNING', `Plugin ${name} completed with ${results.warnings} warnings`);
-        } else {
-          this.log('SUCCESS', `Plugin ${name} completed successfully`);
-        }
-      } catch (error) {
-        this.log('ERROR', `Plugin ${name} threw an error: ${error}`);
-        totalErrors++;
-      }
-    }
-
-    return {
-      errors: totalErrors,
-      warnings: totalWarnings,
-      duration: (Date.now() - startTime) / 1000,
-      timestamp: new Date()
-    };
-  }
-
-  private async appendToLog(entry: string): Promise<void> {
-    try {
-      await ensureDir(path.dirname(this.qaLogPath));
-      await fs.appendFile(this.qaLogPath, entry + '\n');
-    } catch (error) {
+      const fse = await import('fs-extra');
+      const path = await import('path');
+      await fse.ensureDir(path.dirname(this.logger['options'].qaLogPath));
+      const fs = await import('fs/promises');
+      await fs.appendFile(this.logger['options'].qaLogPath, entry + '\n');
+    } catch {
       // Silently fail if logging fails
     }
   }
 
-  private async runCommand(command: string, description: string, timeout = 300000): Promise<boolean> {
-    return new Promise((resolve) => {
-      this.log('INFO', `Running: ${description}`);
-
-      if (this.options.dryRun) {
-        this.log('INFO', `[DRY RUN] Would execute: ${command}`);
-        resolve(true);
-        return;
-      }
-
-      const child = spawn(command, {
-        shell: true,
-        cwd: this.projectRoot,
-        stdio: this.options.verbose ? 'inherit' : 'pipe'
-      });
-
-      const timer = setTimeout(() => {
-        child.kill();
-        this.log('ERROR', `${description} timed out after ${timeout}ms`);
-        resolve(false);
-      }, timeout);
-
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        if (code === 0) {
-          this.log('SUCCESS', `✓ ${description} completed successfully`);
-          resolve(true);
-        } else {
-          this.log('ERROR', `✗ ${description} failed (exit code: ${code})`);
-          resolve(false);
-        }
-      });
-
-      child.on('error', (error) => {
-        clearTimeout(timer);
-        this.log('ERROR', `${description} error: ${error.message}`);
-        resolve(false);
-      });
-    });
+  /**
+   * Sets up Git hooks for pre-commit and pre-push QA checks
+   */
+  public async setupHooks(): Promise<void> {
+    return this.gitHooksManager.setupHooks();
   }
 
+  /**
+   * Gets the map of loaded plugins
+   * @returns Map of plugin names to plugin instances
+   */
+  public getPlugins() {
+    return this.pluginManager.getPlugins();
+  }
+
+  /**
+   * Loads all available plugins
+   */
+  async loadPlugins(): Promise<void> {
+    await this.pluginManager.loadPlugins();
+  }
+
+  /**
+   * Runs all loaded plugins
+   * @returns Promise resolving to combined plugin results
+   */
+  async runPlugins(): Promise<QAResults> {
+    return this.pluginManager.runPlugins();
+  }
+
+  /**
+   * Initializes the QA project configuration and creates necessary files
+   */
   async initializeProject(): Promise<void> {
-    this.log('INFO', 'Initializing QA configuration...');
+    this.logger.log('INFO', 'Initializing QA configuration...');
 
     // Create docs directory if it doesn't exist
-    await ensureDir(path.join(this.projectRoot, 'docs'));
+    await fse.ensureDir(path.join(this.projectRoot, 'docs'));
 
     // Create initial QA log if it doesn't exist
-    if (!await pathExists(this.qaLogPath)) {
+    const qaLogPath = path.join(this.projectRoot, 'docs', 'qalog.md');
+    if (!(await fse.pathExists(qaLogPath))) {
       const header = `# 🛡️ Echain QA Agent Log
 
 This file contains the comprehensive log of all Quality Assurance sessions for the project. Each entry represents a complete QA run with detailed information about checks performed, results, and any issues found.
@@ -410,38 +315,38 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
 ---
 
 `;
-      await writeFile(this.qaLogPath, header);
+      await fse.writeFile(qaLogPath, header);
     }
 
     // Create .qa-config.json if it doesn't exist
     const configPath = path.join(this.projectRoot, '.qa-config.json');
-    if (!await pathExists(configPath)) {
+    if (!(await fse.pathExists(configPath))) {
       const config = {
-        version: "2.0.0",
+        version: '2.0.0',
         project: {
           name: path.basename(this.projectRoot),
-          type: "blockchain", // or "frontend", "fullstack"
-          frameworks: []
+          type: 'blockchain', // or "frontend", "fullstack"
+          frameworks: [],
         },
         checks: {
           linting: true,
           testing: true,
           security: true,
           build: true,
-          performance: false
+          performance: false,
         },
         paths: {
-          frontend: "frontend",
-          blockchain: "blockchain",
-          docs: "docs",
-          tests: "test"
+          frontend: 'frontend',
+          blockchain: 'blockchain',
+          docs: 'docs',
+          tests: 'test',
         },
         hooks: {
           preCommit: true,
           prePush: true,
           autoInstall: true,
           wrapScripts: false,
-          scriptsToWrap: ["build", "start", "dev", "test"]
+          scriptsToWrap: ['build', 'start', 'dev', 'test'],
         },
         qualityGates: {
           failOnLintErrors: true,
@@ -451,18 +356,18 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
           failOnPerformanceIssues: false,
           requireTests: false,
           requireTestCoverage: false,
-          minTestCoverage: 80
-        }
+          minTestCoverage: 80,
+        },
       };
-      await writeFile(configPath, JSON.stringify(config, null, 2));
+      await fse.writeFile(configPath, JSON.stringify(config, null, 2));
     }
 
     // Validate existing configuration
-    if (await pathExists(configPath)) {
+    if (await fse.pathExists(configPath)) {
       try {
-        const configContent = await readFile(configPath, 'utf-8');
+        const configContent = await fse.readFile(configPath, 'utf-8');
         const config = JSON.parse(configContent);
-        const isValid = await this.validateConfig(config);
+        const isValid = await this.configManager.validateConfig(config);
         if (!isValid) {
           throw new Error('Configuration validation failed');
         }
@@ -472,541 +377,74 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
           await this.wrapScripts();
         }
       } catch (error) {
-        this.log('ERROR', `Configuration validation error: ${error}`);
+        this.logger.log('ERROR', `Configuration validation error: ${error}`);
         throw error;
       }
     }
 
-    this.log('SUCCESS', 'QA configuration initialized');
+    this.logger.log('SUCCESS', 'QA configuration initialized');
   }
 
-  async runLinting(autoFix = false, config?: any): Promise<void> {
-    this.log('INFO', 'Starting code quality checks...');
-
-    // Frontend linting
-    const frontendPath = path.join(this.projectRoot, 'frontend');
-    if (await pathExists(frontendPath)) {
-      const success = await this.runCommand(
-        `cd frontend && npm run lint${autoFix ? ' -- --fix' : ''}`,
-        'Frontend ESLint'
-      );
-      if (!success) {
-        if (config?.qualityGates?.failOnLintErrors !== false) {
-          throw new Error('Frontend linting failed');
-        } else {
-          this.log('WARNING', 'Frontend linting failed but continuing due to configuration');
-        }
-      }
-
-      const tsSuccess = await this.runCommand(
-        'cd frontend && npm run type-check',
-        'Frontend TypeScript check'
-      );
-      if (!tsSuccess) {
-        if (config?.qualityGates?.failOnLintErrors !== false) {
-          throw new Error('TypeScript compilation failed');
-        } else {
-          this.log('WARNING', 'TypeScript compilation failed but continuing due to configuration');
-        }
-      }
-    }
-
-    // Blockchain linting - detect framework
-    const blockchainPath = path.join(this.projectRoot, 'blockchain');
-    if (await pathExists(blockchainPath)) {
-      const framework = await this.detectBlockchainFramework(blockchainPath);
-
-      switch (framework) {
-        case 'hardhat':
-          const hardhatLintSuccess = await this.runCommand(
-            'cd blockchain && npm run fix:eslint',
-            'Blockchain ESLint (Hardhat)'
-          );
-          if (!hardhatLintSuccess) {
-            if (config?.qualityGates?.failOnLintErrors !== false) {
-              throw new Error('Blockchain ESLint failed');
-            } else {
-              this.log('WARNING', 'Blockchain ESLint failed but continuing due to configuration');
-            }
-          }
-
-          // Solidity checks for Hardhat
-          await this.runCommand(
-            'cd blockchain && npm run fix:prettier',
-            'Solidity formatting (Hardhat)'
-          );
-
-          const hardhatSolHintSuccess = await this.runCommand(
-            'cd blockchain && npx solhint --fix --noPrompt \'contracts/**/*.sol\'',
-            'Solidity linting (Hardhat)'
-          );
-          if (!hardhatSolHintSuccess) {
-            this.log('WARNING', 'Solidity linting completed with warnings (non-blocking)');
-          }
-          break;
-
-        case 'foundry':
-          // Foundry uses different linting tools
-          const foundryFormatSuccess = await this.runCommand(
-            'cd blockchain && forge fmt --check',
-            'Solidity formatting (Foundry)'
-          );
-          if (!foundryFormatSuccess) {
-            this.log('WARNING', 'Solidity formatting issues found (non-blocking)');
-          }
-
-          // Foundry doesn't have built-in linting, but we can check for common issues
-          this.log('INFO', 'Foundry detected - using forge fmt for code formatting');
-          break;
-
-        case 'truffle':
-          const truffleLintSuccess = await this.runCommand(
-            'cd blockchain && npm run lint',
-            'Blockchain ESLint (Truffle)'
-          );
-          if (!truffleLintSuccess) {
-            if (config?.qualityGates?.failOnLintErrors !== false) {
-              throw new Error('Blockchain ESLint failed');
-            } else {
-              this.log('WARNING', 'Blockchain ESLint failed but continuing due to configuration');
-            }
-          }
-
-          // Solidity checks for Truffle
-          const truffleSolHintSuccess = await this.runCommand(
-            'cd blockchain && npx solhint --fix --noPrompt \'contracts/**/*.sol\'',
-            'Solidity linting (Truffle)'
-          );
-          if (!truffleSolHintSuccess) {
-            this.log('WARNING', 'Solidity linting completed with warnings (non-blocking)');
-          }
-          break;
-
-        default:
-          this.log('WARNING', 'No supported blockchain framework detected for linting. Supported: Hardhat, Foundry, Truffle');
-      }
-    }
+  /**
+   * Runs linting checks with optional auto-fixing
+   * @param autoFix Whether to automatically fix linting issues
+   * @param config Optional linting configuration
+   * @returns Promise resolving to linting results
+   */
+  async runLinting(autoFix = false, config?: any): Promise<CodeQualityResults> {
+    return this.codeQualityChecker.runLinting(autoFix, config);
   }
 
-  async runTests(): Promise<void> {
-    this.log('INFO', 'Starting test execution...');
-
-    // Create progress bar for test phases
-    const testProgress = new cliProgress.SingleBar({
-      format: '🧪 Running tests | {bar} | {percentage}% | {value}/{total} phases',
-      barCompleteChar: '\u2588',
-      barIncompleteChar: '\u2591',
-      hideCursor: true
-    });
-
-    let totalPhases = 0;
-    let currentPhase = 0;
-
-    // Count test phases
-    const blockchainPath = path.join(this.projectRoot, 'blockchain');
-    if (await pathExists(blockchainPath)) totalPhases++;
-
-    const frontendPath = path.join(this.projectRoot, 'frontend');
-    if (await pathExists(frontendPath)) {
-      const packageJson = await readFile(path.join(frontendPath, 'package.json'), 'utf-8');
-      if (packageJson.includes('"test"')) totalPhases++;
-    }
-
-    const testScript = path.join(this.projectRoot, 'scripts', 'run_all_tests.sh');
-    if (await pathExists(testScript)) totalPhases++;
-
-    testProgress.start(totalPhases, 0);
-
-    // Blockchain tests - detect framework
-    if (await pathExists(blockchainPath)) {
-      const framework = await this.detectBlockchainFramework(blockchainPath);
-
-      switch (framework) {
-        case 'hardhat':
-          const hardhatTestSuccess = await this.runCommand(
-            'cd blockchain && npm test',
-            'Blockchain unit tests (Hardhat)',
-            600000 // 10 minutes
-          );
-          if (!hardhatTestSuccess) throw new Error('Hardhat tests failed');
-          break;
-
-        case 'foundry':
-          const foundryTestSuccess = await this.runCommand(
-            'cd blockchain && forge test',
-            'Blockchain unit tests (Foundry)',
-            600000 // 10 minutes
-          );
-          if (!foundryTestSuccess) throw new Error('Foundry tests failed');
-          break;
-
-        case 'truffle':
-          const truffleTestSuccess = await this.runCommand(
-            'cd blockchain && npx truffle test',
-            'Blockchain unit tests (Truffle)',
-            600000 // 10 minutes
-          );
-          if (!truffleTestSuccess) throw new Error('Truffle tests failed');
-          break;
-
-        default:
-          this.log('WARNING', 'No supported blockchain framework detected for testing');
-      }
-      currentPhase++;
-      testProgress.update(currentPhase);
-    }
-
-    // Frontend tests
-    if (await pathExists(frontendPath)) {
-      const packageJson = await readFile(path.join(frontendPath, 'package.json'), 'utf-8');
-      if (packageJson.includes('"test"')) {
-        const success = await this.runCommand(
-          'cd frontend && npm test -- --watchAll=false --passWithNoTests',
-          'Frontend tests',
-          300000 // 5 minutes
-        );
-        if (!success) throw new Error('Frontend tests failed');
-        currentPhase++;
-        testProgress.update(currentPhase);
-      }
-    }
-
-    // Integration tests
-    if (await pathExists(testScript)) {
-      const success = await this.runCommand(
-        'bash scripts/run_all_tests.sh',
-        'Integration tests',
-        900000 // 15 minutes
-      );
-      if (!success) throw new Error('Integration tests failed');
-      currentPhase++;
-      testProgress.update(currentPhase);
-    }
-
-    testProgress.stop();
-    this.log('SUCCESS', 'All test phases completed');
+  /**
+   * Runs the test suite
+   * @returns Promise resolving to test results
+   */
+  async runTests(): Promise<TestResults> {
+    return this.testRunner.runTests();
   }
 
-  async runSecurityChecks(): Promise<number> {
-    this.log('INFO', 'Starting security analysis...');
-    let issues = 0;
-
-    // Check if we have a package.json and package-lock.json in the project root
-    const packageJsonPath = path.join(this.projectRoot, 'package.json');
-    const packageLockPath = path.join(this.projectRoot, 'package-lock.json');
-    const yarnLockPath = path.join(this.projectRoot, 'yarn.lock');
-    const pnpmLockPath = path.join(this.projectRoot, 'pnpm-lock.yaml');
-
-    const hasPackageJson = await pathExists(packageJsonPath);
-    const hasPackageLock = await pathExists(packageLockPath) || await pathExists(yarnLockPath) || await pathExists(pnpmLockPath);
-
-    if (!hasPackageJson) {
-      this.log('WARNING', 'No package.json found in project root - skipping dependency audit');
-    } else if (!hasPackageLock) {
-      this.log('WARNING', 'No lockfile (package-lock.json, yarn.lock, or pnpm-lock.yaml) found - skipping dependency audit');
-    } else {
-      // Dependency audits - only run if we have the necessary files
-      const rootAudit = await this.runCommand('npm audit --audit-level moderate', 'NPM security audit');
-      if (!rootAudit) issues++;
-    }
-
-    const blockchainPath = path.join(this.projectRoot, 'blockchain');
-    if (await pathExists(blockchainPath)) {
-      const blockchainPackageJson = path.join(blockchainPath, 'package.json');
-      const blockchainLock = path.join(blockchainPath, 'package-lock.json');
-
-      if (await pathExists(blockchainPackageJson) && await pathExists(blockchainLock)) {
-        const blockchainAudit = await this.runCommand(
-          'cd blockchain && npm audit --audit-level moderate',
-          'Blockchain dependency audit'
-        );
-        if (!blockchainAudit) issues++;
-      } else {
-        this.log('INFO', 'Blockchain directory exists but no package.json/lockfile - skipping blockchain audit');
-      }
-    }
-
-    // Secret detection
-    const secretIssues = await this.checkForExposedSecrets();
-    issues += secretIssues;
-
-    return issues;
+  /**
+   * Runs security vulnerability checks
+   * @returns Promise resolving to security scan results
+   */
+  async runSecurityChecks(): Promise<SecurityResults> {
+    return this.securityScanner.runSecurityChecks();
   }
 
-  private async checkForExposedSecrets(): Promise<number> {
-    this.log('INFO', 'Checking for exposed secrets...');
-
-    const patterns = [
-      'PRIVATE_KEY.*[0-9a-fA-F]{32,}',
-      'SECRET.*[a-zA-Z0-9_-]{20,}',
-      'PASSWORD.*[a-zA-Z0-9_-]{8,}'
-    ];
-
-    // Only scan relevant file types and directories
-    const includePatterns = [
-      '**/*.{js,ts,json,env,config,yml,yaml,toml}',
-      'contracts/**/*.{sol}',
-      'scripts/**/*',
-      'src/**/*',
-      'lib/**/*',
-      'config/**/*',
-      '.env*',
-      'hardhat.config.*',
-      'truffle-config.*',
-      'foundry.toml'
-    ];
-
-    const excludeDirs = [
-      'node_modules',
-      '.git',
-      'logs',
-      'docs',
-      '.next',
-      'dist',
-      'build',
-      'cache',
-      'artifacts',
-      'coverage',
-      'tmp',
-      'temp'
-    ];
-
-    const excludeFiles = [
-      '*.md',
-      '*.log',
-      'package-lock.json',
-      'yarn.lock',
-      'pnpm-lock.yaml',
-      '*.min.js',
-      '*.min.css'
-    ];
-
-    const excludePatterns = [
-      // QA agent source files (don't scan our own security code)
-      'qa-agent.ts',
-      'qa-agent.js',
-      // Common legitimate patterns
-      'regex',
-      'pattern',
-      'example',
-      'placeholder',
-      'template',
-      'mock',
-      'test',
-      'spec',
-      // Security-related code
-      'security',
-      'audit',
-      'scan',
-      'detect',
-      'check'
-    ];
-
-    let issues = 0;
-    let filesScanned = 0;
-    let totalFiles = 0;
-
-    // First pass: count total files to scan
-    for (const includePattern of includePatterns) {
-      try {
-        const files = globSync(includePattern, {
-          cwd: this.projectRoot,
-          ignore: [
-            ...excludeDirs.map(dir => `${dir}/**`),
-            ...excludeFiles
-          ],
-          nodir: true,
-          absolute: false
-        });
-        totalFiles += files.length;
-      } catch (error) {
-        // Skip invalid glob patterns
-      }
-    }
-
-    // Create progress bar
-    const progressBar = new cliProgress.SingleBar({
-      format: '🔍 Scanning for secrets | {bar} | {percentage}% | {value}/{total} files',
-      barCompleteChar: '\u2588',
-      barIncompleteChar: '\u2591',
-      hideCursor: true
-    });
-
-    progressBar.start(totalFiles, 0);
-
-    // Use more specific glob patterns instead of scanning everything
-    for (const includePattern of includePatterns) {
-      try {
-        const files = globSync(includePattern, {
-          cwd: this.projectRoot,
-          ignore: [
-            ...excludeDirs.map(dir => `${dir}/**`),
-            ...excludeFiles
-          ],
-          nodir: true,
-          absolute: false
-        });
-
-        for (const file of files) {
-          if (filesScanned > 1000) {
-            this.log('WARNING', 'Secret scan limit reached (1000 files). Consider reviewing large codebases manually.');
-            break;
-          }
-
-          filesScanned++;
-          progressBar.update(filesScanned);
-
-          try {
-            const content = await readFile(path.join(this.projectRoot, file), 'utf-8');
-            const lines = content.split('\n');
-
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i];
-              if (new RegExp(patterns.join('|')).test(line) &&
-                  !line.includes('process.env') &&
-                  !line.includes('import.meta.env') &&
-                  !line.includes('your_') &&
-                  !line.includes('_here') &&
-                  !line.includes('placeholder') &&
-                  !line.includes('example') &&
-                  !excludePatterns.some(excl => line.toLowerCase().includes(excl.toLowerCase()))) {
-                // Additional check: skip lines that are clearly regex patterns or security code
-                if (line.includes('const patterns = [') ||
-                    line.includes('RegExp(') ||
-                    line.includes('regex') ||
-                    line.includes('pattern') ||
-                    file.includes('qa-agent')) {
-                  continue; // Skip this line - it's legitimate security code
-                }
-                this.log('ERROR', `Potential exposed secret found in ${file}:${i + 1}`);
-                issues++;
-              }
-            }
-          } catch (error) {
-            // Skip binary files or files that can't be read
-          }
-        }
-
-        if (filesScanned > 1000) break;
-      } catch (error) {
-        // Skip invalid glob patterns
-      }
-    }
-
-    progressBar.stop();
-    this.log('INFO', `Secret scan completed: ${filesScanned} files scanned`);
-
-    if (issues === 0) {
-      this.log('SUCCESS', 'No exposed secrets detected');
-    }
-
-    return issues;
+  /**
+   * Runs build verification checks
+   * @returns Promise resolving to build verification results
+   */
+  async runBuildChecks(): Promise<BuildResults> {
+    return this.buildVerifier.runBuildChecks();
   }
 
-  async runBuildChecks(): Promise<void> {
-    this.log('INFO', 'Starting build verification...');
-
-    // Create progress bar for build phases
-    const buildProgress = new cliProgress.SingleBar({
-      format: '🔨 Building project | {bar} | {percentage}% | {value}/{total} phases',
-      barCompleteChar: '\u2588',
-      barIncompleteChar: '\u2591',
-      hideCursor: true
-    });
-
-    let totalPhases = 0;
-    let currentPhase = 0;
-
-    // Count build phases
-    const frontendPath = path.join(this.projectRoot, 'frontend');
-    if (await pathExists(frontendPath)) totalPhases++;
-
-    const blockchainPath = path.join(this.projectRoot, 'blockchain');
-    if (await pathExists(blockchainPath)) totalPhases++;
-
-    buildProgress.start(totalPhases, 0);
-
-    // Frontend build
-    if (await pathExists(frontendPath)) {
-      const success = await this.runCommand(
-        'cd frontend && npm run build',
-        'Frontend production build',
-        600000 // 10 minutes
-      );
-      if (!success) throw new Error('Frontend build failed');
-      currentPhase++;
-      buildProgress.update(currentPhase);
-    }
-
-    // Blockchain compilation - detect framework
-    if (await pathExists(blockchainPath)) {
-      const framework = await this.detectBlockchainFramework(blockchainPath);
-
-      switch (framework) {
-        case 'hardhat':
-          const hardhatSuccess = await this.runCommand(
-            'cd blockchain && npx hardhat compile',
-            'Smart contract compilation (Hardhat)',
-            180000 // 3 minutes
-          );
-          if (!hardhatSuccess) throw new Error('Hardhat contract compilation failed');
-          break;
-
-        case 'foundry':
-          const foundrySuccess = await this.runCommand(
-            'cd blockchain && forge build',
-            'Smart contract compilation (Foundry)',
-            180000 // 3 minutes
-          );
-          if (!foundrySuccess) throw new Error('Foundry contract compilation failed');
-          break;
-
-        case 'truffle':
-          const truffleSuccess = await this.runCommand(
-            'cd blockchain && npx truffle compile',
-            'Smart contract compilation (Truffle)',
-            180000 // 3 minutes
-          );
-          if (!truffleSuccess) throw new Error('Truffle contract compilation failed');
-          break;
-
-        default:
-          this.log('WARNING', 'No supported blockchain framework detected. Supported: Hardhat, Foundry, Truffle');
-      }
-      currentPhase++;
-      buildProgress.update(currentPhase);
-    }
-
-    buildProgress.stop();
-    this.log('SUCCESS', 'All build phases completed');
+  /**
+   * Checks if Git hooks are properly installed
+   * @returns Promise resolving to true if hooks are installed
+   */
+  async checkHooks(): Promise<boolean> {
+    return this.gitHooksManager.checkHooks();
   }
 
-  private async detectBlockchainFramework(blockchainPath: string): Promise<'hardhat' | 'foundry' | 'truffle' | null> {
-    // Check for Hardhat
-    if (await pathExists(path.join(blockchainPath, 'hardhat.config.js')) ||
-        await pathExists(path.join(blockchainPath, 'hardhat.config.ts'))) {
-      return 'hardhat';
-    }
-
-    // Check for Foundry
-    if (await pathExists(path.join(blockchainPath, 'foundry.toml'))) {
-      return 'foundry';
-    }
-
-    // Check for Truffle
-    if (await pathExists(path.join(blockchainPath, 'truffle-config.js')) ||
-        await pathExists(path.join(blockchainPath, 'truffle.js'))) {
-      return 'truffle';
-    }
-
-    return null;
+  /**
+   * Validates QA configuration
+   * @param config Configuration object to validate
+   * @returns Promise resolving to true if configuration is valid
+   */
+  async validateConfig(config: any): Promise<boolean> {
+    return this.configManager.validateConfig(config);
   }
 
+  /**
+   * Runs the complete QA suite with all enabled checks
+   * @returns Promise resolving to comprehensive QA results
+   */
   async runFullSuite(): Promise<QAResults> {
     const sessionId = `QA_${new Date().toISOString().replace(/[:.]/g, '_')}`;
 
     // Load cache and plugins
-    await this.loadCache();
+    await this.cacheManager.loadCache();
     await this.loadPlugins();
 
     // Initialize QA log session
@@ -1021,16 +459,17 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
 `;
     await this.appendToLog(sessionHeader);
 
-    this.log('INFO', 'Starting comprehensive QA suite...');
+    this.logger.log('INFO', 'Starting comprehensive QA suite...');
 
     let totalErrors = 0;
     let totalWarnings = 0;
 
     let config: any = null;
     try {
-      config = await this.loadQaConfig();
+      config = await this.configManager.loadQaConfig();
     } catch (error) {
-      this.log('WARNING', 'Proceeding without QA configuration due to load error');
+      this.logger.log('WARNING', `Failed to load QA config: ${error}`);
+      this.logger.log('WARNING', 'Proceeding without QA configuration due to load error');
     }
 
     const qualityGates = config?.qualityGates ?? {};
@@ -1039,101 +478,149 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
     if (qualityGates.requireTests) {
       if (testFiles.length === 0) {
         totalErrors++;
-        this.log('ERROR', 'Quality gate failed: requireTests is enabled but no test files were found.');
+        this.logger.log(
+          'ERROR',
+          'Quality gate failed: requireTests is enabled but no test files were found.'
+        );
       } else {
-        this.log('SUCCESS', `Quality gate passed: detected ${testFiles.length} test file(s).`);
+        this.logger.log(
+          'SUCCESS',
+          `Quality gate passed: detected ${testFiles.length} test file(s).`
+        );
       }
     }
 
     try {
       // 1. Documentation updates
-      await this.updateDocs();
+      if (!this.options.skipDocs) {
+        await this.updateDocs();
+      } else {
+        this.logger.log('INFO', 'Skipping documentation updates (--skip-docs)');
+      }
 
       // 2. Code quality checks - check cache first
-      const cachedLinting = await this.getCachedResult('linting');
-      if (cachedLinting) {
-        this.log('INFO', 'Using cached linting results');
-        totalErrors += cachedLinting.errors;
-        totalWarnings += cachedLinting.warnings;
-        this.log('SUCCESS', 'Code quality checks completed (cached)');
+      if (!this.options.skipLinting) {
+        const cachedLinting = await this.cacheManager.getCachedResult('linting');
+        if (cachedLinting) {
+          this.logger.log('INFO', 'Using cached linting results');
+          if (qualityGates.failOnLintErrors) {
+            totalErrors += cachedLinting.errors;
+          }
+          totalWarnings += cachedLinting.warnings;
+          this.logger.log('SUCCESS', 'Code quality checks completed (cached)');
+        } else {
+          const lintingResults: CodeQualityResults = await this.runLinting(false, config);
+          if (qualityGates.failOnLintErrors) {
+            totalErrors += lintingResults.errors;
+          }
+          totalWarnings += lintingResults.warnings;
+          await this.cacheManager.setCachedResult('linting', {
+            errors: lintingResults.errors,
+            warnings: lintingResults.warnings,
+            duration: lintingResults.duration,
+            timestamp: lintingResults.timestamp,
+          });
+          this.logger.log('SUCCESS', 'Code quality checks completed');
+        }
       } else {
-        await this.runLinting(false, config);
-        const lintingResults: QAResults = {
-          errors: 0,
-          warnings: 0,
-          duration: (Date.now() - this.startTime) / 1000,
-          timestamp: new Date()
-        };
-        await this.setCachedResult('linting', lintingResults);
-        this.log('SUCCESS', 'Code quality checks completed');
+        this.logger.log('INFO', 'Skipping code quality checks (--skip-linting)');
       }
 
       // 3. Testing - check cache first
-      const cachedTesting = await this.getCachedResult('testing');
-      if (cachedTesting) {
-        this.log('INFO', 'Using cached testing results');
-        totalErrors += cachedTesting.errors;
-        totalWarnings += cachedTesting.warnings;
-        this.log('SUCCESS', 'Testing completed (cached)');
-      } else {
-        await this.runTests();
-        const testingResults: QAResults = {
-          errors: 0,
-          warnings: 0,
-          duration: (Date.now() - this.startTime) / 1000,
-          timestamp: new Date()
-        };
-        await this.setCachedResult('testing', testingResults);
-        this.log('SUCCESS', 'Testing completed');
-      }
-
-      if (qualityGates.requireTestCoverage) {
-        try {
-          const coverage = await this.enforceTestCoverageRequirement(config ?? { qualityGates });
-          this.log('SUCCESS', `Coverage requirement satisfied at ${coverage.toFixed(2)}%.`);
-        } catch (error: any) {
-          totalErrors++;
-          this.log('ERROR', error?.message ?? String(error));
+      if (!this.options.skipTesting) {
+        const cachedTesting = await this.cacheManager.getCachedResult('testing');
+        if (cachedTesting) {
+          this.logger.log('INFO', 'Using cached testing results');
+          if (qualityGates.failOnTestFailures) {
+            totalErrors += cachedTesting.errors;
+          }
+          totalWarnings += cachedTesting.warnings;
+          this.logger.log('SUCCESS', 'Testing completed (cached)');
+        } else {
+          const testingResults: TestResults = await this.runTests();
+          if (qualityGates.failOnTestFailures) {
+            totalErrors += testingResults.errors;
+          }
+          totalWarnings += testingResults.warnings;
+          await this.cacheManager.setCachedResult('testing', {
+            errors: testingResults.errors,
+            warnings: testingResults.warnings,
+            duration: testingResults.duration,
+            timestamp: testingResults.timestamp,
+          });
+          this.logger.log('SUCCESS', 'Testing completed');
         }
+
+        if (qualityGates.requireTestCoverage) {
+          try {
+            const coverage = await this.testRunner.enforceTestCoverageRequirement(config);
+            this.logger.log(
+              'SUCCESS',
+              `Coverage requirement satisfied at ${coverage.toFixed(2)}%.`
+            );
+          } catch (error: any) {
+            totalErrors++;
+            this.logger.log('ERROR', error?.message ?? String(error));
+          }
+        }
+      } else {
+        this.logger.log('INFO', 'Skipping testing (--skip-testing)');
       }
 
       // 4. Build verification - check cache first
-      const cachedBuild = await this.getCachedResult('build');
-      if (cachedBuild) {
-        this.log('INFO', 'Using cached build results');
-        totalErrors += cachedBuild.errors;
-        totalWarnings += cachedBuild.warnings;
-        this.log('SUCCESS', 'Build verification completed (cached)');
+      if (!this.options.skipBuild) {
+        const cachedBuild = await this.cacheManager.getCachedResult('build');
+        if (cachedBuild) {
+          this.logger.log('INFO', 'Using cached build results');
+          if (qualityGates.failOnBuildFailures) {
+            totalErrors += cachedBuild.errors;
+          }
+          totalWarnings += cachedBuild.warnings;
+          this.logger.log('SUCCESS', 'Build verification completed (cached)');
+        } else {
+          const buildResults: BuildResults = await this.runBuildChecks();
+          if (qualityGates.failOnBuildFailures) {
+            totalErrors += buildResults.errors;
+          }
+          totalWarnings += buildResults.warnings;
+          await this.cacheManager.setCachedResult('build', {
+            errors: buildResults.errors,
+            warnings: buildResults.warnings,
+            duration: buildResults.duration,
+            timestamp: buildResults.timestamp,
+          });
+          this.logger.log('SUCCESS', 'Build verification completed');
+        }
       } else {
-        await this.runBuildChecks();
-        const buildResults: QAResults = {
-          errors: 0,
-          warnings: 0,
-          duration: (Date.now() - this.startTime) / 1000,
-          timestamp: new Date()
-        };
-        await this.setCachedResult('build', buildResults);
-        this.log('SUCCESS', 'Build verification completed');
+        this.logger.log('INFO', 'Skipping build verification (--skip-build)');
       }
 
       // 5. Security checks - always run fresh (security critical)
-      const securityIssues = await this.runSecurityChecks();
-      totalWarnings += securityIssues;
+      if (!this.options.skipSecurity) {
+        const securityResults: SecurityResults = await this.runSecurityChecks();
+        totalWarnings += securityResults.issues;
+      } else {
+        this.logger.log('INFO', 'Skipping security checks (--skip-security)');
+      }
 
       // 6. Custom plugins
-      if (this.plugins.size > 0) {
-        this.log('INFO', `Running ${this.plugins.size} custom plugins...`);
+      if (!this.options.skipPlugins && this.pluginManager.getPlugins().size > 0) {
+        this.logger.log(
+          'INFO',
+          `Running ${this.pluginManager.getPlugins().size} custom plugins...`
+        );
         const pluginResults = await this.runPlugins();
         totalErrors += pluginResults.errors;
         totalWarnings += pluginResults.warnings;
-        this.log('SUCCESS', 'Custom plugins completed');
+        this.logger.log('SUCCESS', 'Custom plugins completed');
+      } else if (this.options.skipPlugins) {
+        this.logger.log('INFO', 'Skipping custom plugins (--skip-plugins)');
       }
 
       // 7. Performance checks (optional)
       // await this.runPerformanceChecks();
-
     } catch (error) {
-      this.log('ERROR', `QA suite failed: ${error}`);
+      this.logger.log('ERROR', `QA suite failed: ${error}`);
       totalErrors++;
     }
 
@@ -1144,10 +631,10 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
       errors: totalErrors,
       warnings: totalWarnings,
       duration,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
-    await this.generateReport(results);
+    await this.reportGenerator.generateReport(results);
 
     // Final summary
     const summary = `
@@ -1173,41 +660,25 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
 
   private async updateDocs(): Promise<void> {
     // Placeholder for documentation updates
-    this.log('INFO', 'Documentation updates completed');
+    this.logger.log('INFO', 'Documentation updates completed');
   }
 
-  async setupHooks(): Promise<void> {
-    this.log('INFO', 'Setting up git hooks...');
-
-    const hooksDir = path.join(this.projectRoot, '.git', 'hooks');
-    await ensureDir(hooksDir);
-
-    const platform = process.platform;
-    const isWindows = platform === 'win32';
-
-    // Generate hooks based on platform
-    if (isWindows) {
-      await this.generateWindowsHooks(hooksDir);
-    } else {
-      await this.generateUnixHooks(hooksDir);
-    }
-
-    this.log('SUCCESS', 'Git hooks setup completed');
-  }
-
+  /**
+   * Wraps npm scripts to include QA checks before execution
+   */
   async wrapScripts(): Promise<void> {
-    this.log('INFO', 'Wrapping npm scripts with QA checks...');
+    this.logger.log('INFO', 'Wrapping npm scripts with QA checks...');
 
     const packageJsonPath = path.join(this.projectRoot, 'package.json');
-    if (!await pathExists(packageJsonPath)) {
+    if (!(await fse.pathExists(packageJsonPath))) {
       throw new Error('package.json not found');
     }
 
-    const packageJsonContent = await readFile(packageJsonPath, 'utf-8');
+    const packageJsonContent = await fse.readFile(packageJsonPath, 'utf-8');
     const packageJson = JSON.parse(packageJsonContent);
 
     if (!packageJson.scripts) {
-      this.log('WARNING', 'No scripts found in package.json');
+      this.logger.log('WARNING', 'No scripts found in package.json');
       return;
     }
 
@@ -1215,15 +686,16 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
     const configPath = path.join(this.projectRoot, '.qa-config.json');
     let scriptsToWrap = ['build', 'start', 'dev', 'test'];
 
-    if (await pathExists(configPath)) {
+    if (await fse.pathExists(configPath)) {
       try {
-        const configContent = await readFile(configPath, 'utf-8');
+        const configContent = await fse.readFile(configPath, 'utf-8');
         const config = JSON.parse(configContent);
         if (config.hooks && config.hooks.scriptsToWrap) {
           scriptsToWrap = config.hooks.scriptsToWrap;
         }
       } catch (error) {
-        this.log('WARNING', 'Could not read QA config, using defaults');
+        this.logger.log('WARNING', `Failed to read QA config: ${error}`);
+        this.logger.log('WARNING', 'Could not read QA config, using defaults');
       }
     }
 
@@ -1234,7 +706,7 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
 
         // Skip if already wrapped
         if (originalScript.includes('echain-qa run')) {
-          this.log('INFO', `Script '${scriptName}' already wrapped`);
+          this.logger.log('INFO', `Script '${scriptName}' already wrapped`);
           continue;
         }
 
@@ -1242,32 +714,35 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
         const wrappedScript = `npx echain-qa run --dry-run --quiet && ${originalScript}`;
         packageJson.scripts[scriptName] = wrappedScript;
 
-        this.log('SUCCESS', `Wrapped script '${scriptName}'`);
+        this.logger.log('SUCCESS', `Wrapped script '${scriptName}'`);
         wrappedCount++;
       }
     }
 
     if (wrappedCount > 0) {
-      await writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
-      this.log('SUCCESS', `Wrapped ${wrappedCount} scripts with QA checks`);
+      await fse.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+      this.logger.log('SUCCESS', `Wrapped ${wrappedCount} scripts with QA checks`);
     } else {
-      this.log('INFO', 'No scripts needed wrapping');
+      this.logger.log('INFO', 'No scripts needed wrapping');
     }
   }
 
+  /**
+   * Removes QA check wrapping from npm scripts
+   */
   async unwrapScripts(): Promise<void> {
-    this.log('INFO', 'Unwrapping npm scripts...');
+    this.logger.log('INFO', 'Unwrapping npm scripts...');
 
     const packageJsonPath = path.join(this.projectRoot, 'package.json');
-    if (!await pathExists(packageJsonPath)) {
+    if (!(await fse.pathExists(packageJsonPath))) {
       throw new Error('package.json not found');
     }
 
-    const packageJsonContent = await readFile(packageJsonPath, 'utf-8');
+    const packageJsonContent = await fse.readFile(packageJsonPath, 'utf-8');
     const packageJson = JSON.parse(packageJsonContent);
 
     if (!packageJson.scripts) {
-      this.log('WARNING', 'No scripts found in package.json');
+      this.logger.log('WARNING', 'No scripts found in package.json');
       return;
     }
 
@@ -1280,257 +755,31 @@ This file contains the comprehensive log of all Quality Assurance sessions for t
         const originalScript = script.replace('npx echain-qa run --dry-run --quiet && ', '');
         packageJson.scripts[scriptName] = originalScript;
 
-        this.log('SUCCESS', `Unwrapped script '${scriptName}'`);
+        this.logger.log('SUCCESS', `Unwrapped script '${scriptName}'`);
         unwrappedCount++;
       }
     }
 
     if (unwrappedCount > 0) {
-      await writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
-      this.log('SUCCESS', `Unwrapped ${unwrappedCount} scripts`);
+      await fse.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+      this.logger.log('SUCCESS', `Unwrapped ${unwrappedCount} scripts`);
     } else {
-      this.log('INFO', 'No wrapped scripts found');
+      this.logger.log('INFO', 'No wrapped scripts found');
     }
-  }
-
-  private async generateUnixHooks(hooksDir: string): Promise<void> {
-    const setupScript = path.join(__dirname, '..', 'scripts', 'setup-hooks.sh');
-    if (!await pathExists(setupScript)) {
-      throw new Error('Setup script not found');
-    }
-
-    const success = await this.runCommand(`bash "${setupScript}"`, 'Git hooks setup');
-    if (!success) {
-      throw new Error('Failed to setup git hooks');
-    }
-  }
-
-  private async generateWindowsHooks(hooksDir: string): Promise<void> {
-    // Generate PowerShell-based hooks for Windows
-    const preCommitHook = path.join(hooksDir, 'pre-commit');
-    const prePushHook = path.join(hooksDir, 'pre-push');
-
-    // Pre-commit hook (PowerShell)
-    const preCommitContent = `# Pre-commit hook to run QA checks before commits
-Write-Host "🛡️ Running QA checks before commit..." -ForegroundColor Blue
-
-$projectRoot = git rev-parse --show-toplevel 2>$null
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Not in a git repository" -ForegroundColor Red
-    exit 1
-}
-
-if (Test-Path "$projectRoot/package.json") {
-    $qaAgentAvailable = $false
-    if (Test-Path "$projectRoot/node_modules/@echain/qa-agent") {
-        $qaAgentAvailable = $true
-    } elseif (Get-Command echain-qa -ErrorAction SilentlyContinue) {
-        $qaAgentAvailable = $true
-    }
-
-    if ($qaAgentAvailable) {
-        Write-Host "🔍 Running QA agent checks..." -ForegroundColor Yellow
-
-        $command = $null
-        if (Get-Command echain-qa -ErrorAction SilentlyContinue) {
-            $command = "echain-qa run --dry-run --verbose"
-        } elseif (Test-Path "$projectRoot/node_modules/.bin/echain-qa") {
-            $command = "& '$projectRoot/node_modules/.bin/echain-qa' run --dry-run --verbose"
-        }
-
-        if ($command) {
-            try {
-                Invoke-Expression $command
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Host "❌ QA checks failed. Please fix issues before committing." -ForegroundColor Red
-                    exit 1
-                }
-                Write-Host "✅ QA checks passed" -ForegroundColor Green
-            } catch {
-                Write-Host "❌ QA checks failed. Please fix issues before committing." -ForegroundColor Red
-                exit 1
-            }
-        }
-    } else {
-        Write-Host "⚠️  QA agent not found. Install with: npm install --save-dev @echain/qa-agent" -ForegroundColor Yellow
-    }
-}
-
-exit 0`;
-
-    // Pre-push hook (PowerShell)
-    const prePushContent = `# Pre-push hook to run comprehensive QA checks before pushing
-Write-Host "🛡️ Running comprehensive QA checks before push..." -ForegroundColor Blue
-
-$projectRoot = git rev-parse --show-toplevel 2>$null
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Not in a git repository" -ForegroundColor Red
-    exit 1
-}
-
-if (Test-Path "$projectRoot/package.json") {
-    $qaAgentAvailable = $false
-    if (Test-Path "$projectRoot/node_modules/@echain/qa-agent") {
-        $qaAgentAvailable = $true
-    } elseif (Get-Command echain-qa -ErrorAction SilentlyContinue) {
-        $qaAgentAvailable = $true
-    }
-
-    if ($qaAgentAvailable) {
-        Write-Host "🔍 Running comprehensive QA agent checks..." -ForegroundColor Yellow
-
-        $command = $null
-        if (Get-Command echain-qa -ErrorAction SilentlyContinue) {
-            $command = "echain-qa run --verbose"
-        } elseif (Test-Path "$projectRoot/node_modules/.bin/echain-qa") {
-            $command = "& '$projectRoot/node_modules/.bin/echain-qa' run --verbose"
-        }
-
-        if ($command) {
-            try {
-                Invoke-Expression $command
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Host "❌ QA checks failed. Please fix critical issues before pushing." -ForegroundColor Red
-                    exit 1
-                }
-                Write-Host "✅ All QA checks passed - ready for push!" -ForegroundColor Green
-            } catch {
-                Write-Host "❌ QA checks failed. Please fix critical issues before pushing." -ForegroundColor Red
-                exit 1
-            }
-        }
-    } else {
-        Write-Host "⚠️  QA agent not found. Install with: npm install --save-dev @echain/qa-agent" -ForegroundColor Yellow
-    }
-}
-
-exit 0`;
-
-    // Write hooks
-    await writeFile(preCommitHook, preCommitContent);
-    await writeFile(prePushHook, prePushContent);
-
-    // Make executable (Windows doesn't use chmod, but Git for Windows can handle it)
-    try {
-      await this.runCommand(`chmod +x "${preCommitHook}"`, 'Make pre-commit executable');
-      await this.runCommand(`chmod +x "${prePushHook}"`, 'Make pre-push executable');
-    } catch (error) {
-      // On Windows, chmod might not be available, but Git hooks should still work
-      this.log('WARNING', 'Could not set executable permissions on hooks (expected on Windows)');
-    }
-
-    this.log('SUCCESS', 'Windows PowerShell hooks installed');
-  }
-
-  async checkHooks(): Promise<boolean> {
-    this.log('INFO', 'Checking git hooks status...');
-
-    const hooksDir = path.join(this.projectRoot, '.git', 'hooks');
-    const preCommitHook = path.join(hooksDir, 'pre-commit');
-    const prePushHook = path.join(hooksDir, 'pre-push');
-
-    const preCommitExists = await pathExists(preCommitHook);
-    const prePushExists = await pathExists(prePushHook);
-
-    if (!preCommitExists && !prePushExists) {
-      this.log('WARNING', 'No QA hooks found');
-      return false;
-    }
-
-    if (preCommitExists) {
-      // Check if it's executable and contains QA logic
-      try {
-        const content = await readFile(preCommitHook, 'utf-8');
-        if (content.includes('QA checks')) {
-          this.log('SUCCESS', 'Pre-commit hook is properly configured');
-        } else {
-          this.log('WARNING', 'Pre-commit hook exists but may not be QA hook');
-        }
-      } catch (error) {
-        this.log('WARNING', 'Cannot read pre-commit hook');
-      }
-    }
-
-    if (prePushExists) {
-      try {
-        const content = await readFile(prePushHook, 'utf-8');
-        if (content.includes('QA checks')) {
-          this.log('SUCCESS', 'Pre-push hook is properly configured');
-        } else {
-          this.log('WARNING', 'Pre-push hook exists but may not be QA hook');
-        }
-      } catch (error) {
-        this.log('WARNING', 'Cannot read pre-push hook');
-      }
-    }
-
-    return true;
-  }
-
-  async removeHooks(): Promise<void> {
-    this.log('INFO', 'Removing git hooks...');
-
-    const hooksDir = path.join(this.projectRoot, '.git', 'hooks');
-    const preCommitHook = path.join(hooksDir, 'pre-commit');
-    const prePushHook = path.join(hooksDir, 'pre-push');
-
-    let removed = false;
-
-    if (await pathExists(preCommitHook)) {
-      try {
-        const content = await readFile(preCommitHook, 'utf-8');
-        if (content.includes('QA checks')) {
-          await fs.unlink(preCommitHook);
-          this.log('SUCCESS', 'Pre-commit hook removed');
-          removed = true;
-        } else {
-          this.log('WARNING', 'Pre-commit hook exists but is not a QA hook - not removing');
-        }
-      } catch (error) {
-        this.log('ERROR', 'Failed to remove pre-commit hook');
-      }
-    }
-
-    if (await pathExists(prePushHook)) {
-      try {
-        const content = await readFile(prePushHook, 'utf-8');
-        if (content.includes('QA checks')) {
-          await fs.unlink(prePushHook);
-          this.log('SUCCESS', 'Pre-push hook removed');
-          removed = true;
-        } else {
-          this.log('WARNING', 'Pre-push hook exists but is not a QA hook - not removing');
-        }
-      } catch (error) {
-        this.log('ERROR', 'Failed to remove pre-push hook');
-      }
-    }
-
-    if (!removed) {
-      this.log('INFO', 'No QA hooks found to remove');
-    } else {
-      this.log('SUCCESS', 'Git hooks removal completed');
-    }
-  }
-
-  private async generateReport(results: QAResults): Promise<void> {
-    const reportPath = path.join(this.projectRoot, "qa-report.json");
-    const report = {
-      timestamp: results.timestamp.toISOString(),
-      duration: results.duration,
-      errors: results.errors,
-      warnings: results.warnings,
-      status: results.errors > 0 ? "failure" : "success"
-    };
-
-    await writeFile(reportPath, JSON.stringify(report, null, 2));
-    this.log("SUCCESS", `QA report generated: ${reportPath}`);
   }
 
   /**
-   * Detect project type and frameworks
+   * Removes Git hooks
    */
-  private async detectProjectType(): Promise<{
+  async removeHooks(): Promise<void> {
+    await this.gitHooksManager.removeHooks();
+  }
+
+  /**
+   * Detects the project type and frameworks used
+   * @returns Promise resolving to project detection results
+   */
+  async detectProjectType(): Promise<{
     projectType: string;
     frameworks: string[];
     languages: string[];
@@ -1538,411 +787,77 @@ exit 0`;
     hasTests: boolean;
     hasBuild: boolean;
   }> {
-    const detection = {
-      projectType: 'unknown',
-      frameworks: [] as string[],
-      languages: [] as string[],
-      confidence: 0,
-      hasTests: false,
-      hasBuild: false
-    };
-
-    // Check for package.json
-    const packageJsonPath = path.join(this.projectRoot, 'package.json');
-    if (await pathExists(packageJsonPath)) {
-      try {
-        const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
-        detection.languages.push('javascript');
-
-        // Check for TypeScript
-        if (await pathExists(path.join(this.projectRoot, 'tsconfig.json'))) {
-          detection.languages.push('typescript');
-        }
-
-        // Detect frameworks from dependencies
-        const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
-
-        // Blockchain frameworks
-        if (deps['hardhat']) {
-          detection.frameworks.push('hardhat');
-          detection.projectType = 'blockchain';
-          detection.confidence = 90;
-        } else if (deps['@nomiclabs/hardhat-ethers']) {
-          detection.frameworks.push('hardhat');
-          detection.projectType = 'blockchain';
-          detection.confidence = 85;
-        } else if (deps['truffle']) {
-          detection.frameworks.push('truffle');
-          detection.projectType = 'blockchain';
-          detection.confidence = 90;
-        }
-
-        // Frontend frameworks
-        if (deps['react']) {
-          detection.frameworks.push('react');
-          detection.projectType = detection.projectType === 'blockchain' ? 'fullstack' : 'frontend';
-          detection.confidence = Math.max(detection.confidence, 85);
-        }
-        if (deps['next']) {
-          detection.frameworks.push('next.js');
-          detection.projectType = detection.projectType === 'blockchain' ? 'fullstack' : 'frontend';
-          detection.confidence = Math.max(detection.confidence, 90);
-        }
-        if (deps['vue']) {
-          detection.frameworks.push('vue');
-          detection.projectType = detection.projectType === 'blockchain' ? 'fullstack' : 'frontend';
-          detection.confidence = Math.max(detection.confidence, 85);
-        }
-        if (deps['@angular/core']) {
-          detection.frameworks.push('angular');
-          detection.projectType = detection.projectType === 'blockchain' ? 'fullstack' : 'frontend';
-          detection.confidence = Math.max(detection.confidence, 85);
-        }
-
-        // Check for tests
-        detection.hasTests = !!(deps['jest'] || deps['mocha'] || deps['vitest'] || packageJson.scripts?.test);
-
-        // Check for build scripts
-        detection.hasBuild = !!packageJson.scripts?.build;
-
-      } catch (error) {
-        // Ignore parse errors
-      }
-    }
-
-    // Check for blockchain-specific files
-    const blockchainPath = path.join(this.projectRoot, 'blockchain');
-    if (await pathExists(blockchainPath)) {
-      detection.projectType = detection.projectType === 'frontend' ? 'fullstack' : 'blockchain';
-      detection.confidence = Math.max(detection.confidence, 80);
-    }
-
-    // Check for frontend directory
-    const frontendPath = path.join(this.projectRoot, 'frontend');
-    if (await pathExists(frontendPath)) {
-      detection.projectType = detection.projectType === 'blockchain' ? 'fullstack' : 'frontend';
-      detection.confidence = Math.max(detection.confidence, 80);
-    }
-
-    // Default fallback
-    if (detection.projectType === 'unknown') {
-      detection.projectType = 'library';
-      detection.confidence = 50;
-    }
-
-    return detection;
+    return this.projectDetector.detectProjectType();
   }
 
   /**
    * Interactive configuration wizard for setting up QA agent
    */
   async runInteractiveSetup(): Promise<void> {
-    const inquirer = (await import('inquirer')).default;
-
-    console.log(chalk.cyan('\n🛡️  Echain QA Agent - Interactive Setup'));
-    console.log(chalk.gray('Let\'s configure quality assurance for your project!\n'));
-
-    // Detect project type first
-    const detection = await this.detectProjectType();
-
-    console.log(chalk.blue('🔍 Project Analysis:'));
-    console.log(`   Type: ${detection.projectType} (${detection.confidence}% confidence)`);
-    console.log(`   Frameworks: ${detection.frameworks.join(', ') || 'none detected'}`);
-    console.log(`   Languages: ${detection.languages.join(', ')}`);
-    console.log(`     Tests: ${detection.hasTests ? '✅ detected' : '❌ not found'}`);
-    console.log(`   Build: ${detection.hasBuild ? '✅ configured' : '❌ not configured'}\n`);
-
-    // Project type confirmation
-    const { confirmProjectType } = await inquirer.prompt([{
-      type: 'confirm',
-      name: 'confirmProjectType',
-      message: `Is this a ${detection.projectType} project?`,
-      default: detection.confidence > 70
-    }]);
-
-    let projectType = detection.projectType;
-    let frameworks = [...detection.frameworks];
-
-    if (!confirmProjectType) {
-      const { manualProjectType } = await inquirer.prompt([{
-        type: 'list',
-        name: 'manualProjectType',
-        message: 'What type of project is this?',
-        choices: [
-          { name: 'Blockchain/Smart Contracts', value: 'blockchain' },
-          { name: 'Frontend Web Application', value: 'frontend' },
-          { name: 'Full-stack Application', value: 'fullstack' },
-          { name: 'Library/Package', value: 'library' }
-        ]
-      }]);
-      projectType = manualProjectType;
-
-      // Ask about frameworks based on project type
-      if (projectType === 'blockchain') {
-        const { blockchainFrameworks } = await inquirer.prompt([{
-          type: 'checkbox',
-          name: 'blockchainFrameworks',
-          message: 'Which blockchain frameworks are you using?',
-          choices: [
-            { name: 'Hardhat', value: 'hardhat' },
-            { name: 'Foundry', value: 'foundry' },
-            { name: 'Truffle', value: 'truffle' },
-            { name: 'Other', value: 'other' }
-          ]
-        }]);
-        frameworks = blockchainFrameworks.filter((f: string) => f !== 'other');
-      } else if (projectType === 'frontend') {
-        const { frontendFrameworks } = await inquirer.prompt([{
-          type: 'checkbox',
-          name: 'frontendFrameworks',
-          message: 'Which frontend frameworks are you using?',
-          choices: [
-            { name: 'React', value: 'react' },
-            { name: 'Next.js', value: 'next.js' },
-            { name: 'Vue.js', value: 'vue' },
-            { name: 'Angular', value: 'angular' },
-            { name: 'Vite', value: 'vite' },
-            { name: 'Other', value: 'other' }
-          ]
-        }]);
-        frameworks = frontendFrameworks.filter((f: string) => f !== 'other');
-      }
-    }
-
-    // Quality checks configuration
-    console.log(chalk.blue('\n🔧 Quality Checks Configuration:'));
-    const { enableLinting, enableTesting, enableSecurity, enableBuild, enablePerformance } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'enableLinting',
-        message: 'Enable code linting checks?',
-        default: true
-      },
-      {
-        type: 'confirm',
-        name: 'enableTesting',
-        message: 'Enable automated testing?',
-        default: detection.hasTests
-      },
-      {
-        type: 'confirm',
-        name: 'enableSecurity',
-        message: 'Enable security vulnerability scanning?',
-        default: true
-      },
-      {
-        type: 'confirm',
-        name: 'enableBuild',
-        message: 'Enable build verification?',
-        default: detection.hasBuild
-      },
-      {
-        type: 'confirm',
-        name: 'enablePerformance',
-        message: 'Enable performance checks?',
-        default: false
-      }
-    ]);
-
-    // Quality gates
-    console.log(chalk.blue('\n🚧 Quality Gates:'));
-    const { failOnLintErrors, failOnTestFailures, failOnBuildFailures, requireTests } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'failOnLintErrors',
-        message: 'Fail builds on linting errors?',
-        default: true
-      },
-      {
-        type: 'confirm',
-        name: 'failOnTestFailures',
-        message: 'Fail builds on test failures?',
-        default: true
-      },
-      {
-        type: 'confirm',
-        name: 'failOnBuildFailures',
-        message: 'Fail builds on build failures?',
-        default: true
-      },
-      {
-        type: 'confirm',
-        name: 'requireTests',
-        message: 'Require test files to be present?',
-        default: false
-      }
-    ]);
-
-    // Git hooks setup
-    console.log(chalk.blue('\n🔗 Git Integration:'));
-    const { setupPreCommit, setupPrePush, wrapScripts } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'setupPreCommit',
-        message: 'Install pre-commit hook for QA checks?',
-        default: true
-      },
-      {
-        type: 'confirm',
-        name: 'setupPrePush',
-        message: 'Install pre-push hook for QA checks?',
-        default: true
-      },
-      {
-        type: 'confirm',
-        name: 'wrapScripts',
-        message: 'Wrap npm scripts (build, start, dev, test) with QA checks?',
-        default: false
-      }
-    ]);
-
-    // Create configuration
-    const config = {
-      version: "2.2.0",
-      project: {
-        name: path.basename(this.projectRoot),
-        type: projectType,
-        frameworks: frameworks
-      },
-      checks: {
-        linting: enableLinting,
-        testing: enableTesting,
-        security: enableSecurity,
-        build: enableBuild,
-        performance: enablePerformance
-      },
-      paths: {
-        frontend: "frontend",
-        blockchain: "blockchain",
-        docs: "docs",
-        tests: "test"
-      },
-      hooks: {
-        preCommit: setupPreCommit,
-        prePush: setupPrePush,
-        autoInstall: true,
-        wrapScripts: wrapScripts,
-        scriptsToWrap: ["build", "start", "dev", "test"]
-      },
-      timeouts: {
-        lint: 300,
-        test: 600,
-        build: 300,
-        security: 120
-      },
-      qualityGates: {
-        failOnLintErrors: failOnLintErrors,
-        failOnTestFailures: failOnTestFailures,
-        failOnBuildFailures: failOnBuildFailures,
-        failOnSecurityVulnerabilities: true,
-        failOnPerformanceIssues: false,
-        requireTests: requireTests,
-        requireTestCoverage: false,
-        minTestCoverage: 80
-      }
-    };
+    const config = await this.interactiveSetup.runInteractiveSetup();
 
     // Show configuration preview
-    console.log(chalk.blue('\n📋 Configuration Preview:'));
+    console.log(chalk.blue('\n� Configuration Preview:'));
     console.log(JSON.stringify(config, null, 2));
 
-    const { confirmConfig } = await inquirer.prompt([{
-      type: 'confirm',
-      name: 'confirmConfig',
-      message: 'Save this configuration?',
-      default: true
-    }]);
+    const { confirmConfig } = await (
+      await import('inquirer')
+    ).default.prompt([
+      {
+        type: 'confirm',
+        name: 'confirmConfig',
+        message: 'Save this configuration?',
+        default: true,
+      },
+    ]);
 
     if (confirmConfig) {
       const configPath = path.join(this.projectRoot, '.qa-config.json');
-      await writeFile(configPath, JSON.stringify(config, null, 2));
+      await fse.writeFile(configPath, JSON.stringify(config, null, 2));
       console.log(chalk.green(`\n✅ Configuration saved to ${configPath}`));
 
       // Setup hooks if requested
-      if (setupPreCommit || setupPrePush) {
+      if (config.hooks.preCommit || config.hooks.prePush) {
         console.log(chalk.blue('\n🔗 Setting up git hooks...'));
         await this.setupHooks();
       }
 
       // Wrap scripts if requested
-      if (wrapScripts) {
+      if (config.hooks.wrapScripts) {
         console.log(chalk.blue('\n📦 Wrapping npm scripts...'));
         await this.wrapScripts();
       }
 
       console.log(chalk.green('\n🎉 Setup complete! Run "echain-qa run" to start QA checks.'));
     } else {
-      console.log(chalk.yellow('\n⚠️  Configuration not saved. You can run this setup again anytime.'));
+      console.log(
+        chalk.yellow('\n⚠️  Configuration not saved. You can run this setup again anytime.')
+      );
     }
   }
 
   /**
    * Run guided troubleshooting to identify and fix common issues
    */
+  /**
+   * Run guided troubleshooting with comprehensive diagnostics
+   */
   async runGuidedTroubleshooting(): Promise<void> {
-    const inquirer = (await import('inquirer')).default;
-
-    console.log(chalk.cyan('\n🔧 Guided Troubleshooting'));
-    console.log(chalk.gray('Let\'s identify and fix common project issues...\n'));
-
-    // Analyze recent issues
-    const issues = await this.analyzeRecentIssues();
-
-    if (issues.length === 0) {
-      console.log(chalk.green('✅ No issues detected! Your project looks healthy.'));
-      return;
-    }
-
-    console.log(chalk.yellow(`⚠️  Found ${issues.length} potential issue${issues.length === 1 ? '' : 's'}:\n`));
-
-    // Display issues
-    issues.forEach((issue, index) => {
-      console.log(`${index + 1}. ${issue.title}`);
-      console.log(`   ${issue.description}`);
-      console.log(`   Severity: ${issue.severity}`);
-      console.log(`   Category: ${issue.category}\n`);
-    });
-
-    // Ask user which issues to address
-    const { selectedIssues } = await inquirer.prompt([{
-      type: 'checkbox',
-      name: 'selectedIssues',
-      message: 'Which issues would you like to address?',
-      choices: issues.map((issue, index) => ({
-        name: `${index + 1}. ${issue.title} (${issue.severity})`,
-        value: index,
-        checked: issue.severity === 'high'
-      }))
-    }]);
-
-    // Troubleshoot selected issues
-    for (const issueIndex of selectedIssues) {
-      const issue = issues[issueIndex];
-      await this.troubleshootIssue(issue);
-    }
-
-    console.log(chalk.green('\n✅ Troubleshooting completed!'));
+    const wizard = new TroubleshootingWizard(this.projectRoot);
+    await wizard.startWizard();
   }
 
   /**
-   * Analyze recent issues in the project
+   * Run the plugin marketplace interface
    */
-  private async analyzeRecentIssues(): Promise<any[]> {
-    const issues: any[] = [];
+  async runPluginMarketplace(): Promise<void> {
+    const browser = new PluginBrowser({
+      manager: this.pluginManager,
+      autoInstall: false,
+      showDetails: true
+    });
 
-    // Check configuration issues
-    const configIssues = await this.detectConfigurationIssues();
-    issues.push(...configIssues);
-
-    // Check dependency issues
-    const dependencyIssues = await this.detectDependencyIssues();
-    issues.push(...dependencyIssues);
-
-    // Check code quality issues
-    const codeQualityIssues = await this.detectCodeQualityIssues();
-    issues.push(...codeQualityIssues);
-
-    return issues;
+    await browser.browse();
   }
 
   /**
@@ -1955,25 +870,25 @@ exit 0`;
     const configPath = path.join(this.projectRoot, '.qa-config.json');
     const shellConfigPath = path.join(this.projectRoot, '.qa-config');
 
-    if (!(await pathExists(configPath)) && !(await pathExists(shellConfigPath))) {
+    if (!(await fse.pathExists(configPath)) && !(await fse.pathExists(shellConfigPath))) {
       issues.push({
         title: 'Missing QA Configuration',
         description: 'No QA configuration file found. Run "echain-qa setup" to create one.',
         severity: 'medium',
         category: 'configuration',
-        autoFix: true
+        autoFix: true,
       });
     }
 
     // Check for missing package.json
     const packageJsonPath = path.join(this.projectRoot, 'package.json');
-    if (!(await pathExists(packageJsonPath))) {
+    if (!(await fse.pathExists(packageJsonPath))) {
       issues.push({
         title: 'Missing package.json',
         description: 'No package.json found. This is required for Node.js projects.',
         severity: 'high',
         category: 'configuration',
-        autoFix: false
+        autoFix: false,
       });
     }
 
@@ -1987,14 +902,13 @@ exit 0`;
     const issues: any[] = [];
 
     const packageJsonPath = path.join(this.projectRoot, 'package.json');
-    if (await pathExists(packageJsonPath)) {
+    if (await fse.pathExists(packageJsonPath)) {
       try {
-        const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
-
         // Check for missing lockfile
-        const hasLockFile = await pathExists(path.join(this.projectRoot, 'package-lock.json')) ||
-                           await pathExists(path.join(this.projectRoot, 'yarn.lock')) ||
-                           await pathExists(path.join(this.projectRoot, 'pnpm-lock.yaml'));
+        const hasLockFile =
+          (await fse.pathExists(path.join(this.projectRoot, 'package-lock.json'))) ||
+          (await fse.pathExists(path.join(this.projectRoot, 'yarn.lock'))) ||
+          (await fse.pathExists(path.join(this.projectRoot, 'pnpm-lock.yaml')));
 
         if (!hasLockFile) {
           issues.push({
@@ -2002,19 +916,20 @@ exit 0`;
             description: 'No package lock file found. This can lead to inconsistent dependencies.',
             severity: 'medium',
             category: 'dependencies',
-            autoFix: false
+            autoFix: false,
           });
         }
 
         // Check for outdated dependencies
         // This would require running npm outdated, but we'll skip for now
       } catch (error) {
+        console.log(`WARNING: Failed to parse package.json: ${error}`);
         issues.push({
           title: 'Invalid package.json',
           description: 'package.json contains invalid JSON.',
           severity: 'high',
           category: 'configuration',
-          autoFix: false
+          autoFix: false,
         });
       }
     }
@@ -2036,14 +951,15 @@ exit 0`;
         description: 'No test files detected. Consider adding tests for better code quality.',
         severity: 'low',
         category: 'testing',
-        autoFix: false
+        autoFix: false,
       });
     }
 
     // Check for linting configuration
-    const hasLinting = await pathExists(path.join(this.projectRoot, '.eslintrc.js')) ||
-                      await pathExists(path.join(this.projectRoot, '.eslintrc.json')) ||
-                      await pathExists(path.join(this.projectRoot, '.eslintrc.yml'));
+    const hasLinting =
+      (await fse.pathExists(path.join(this.projectRoot, '.eslintrc.js'))) ||
+      (await fse.pathExists(path.join(this.projectRoot, '.eslintrc.json'))) ||
+      (await fse.pathExists(path.join(this.projectRoot, '.eslintrc.yml')));
 
     if (!hasLinting) {
       issues.push({
@@ -2051,7 +967,7 @@ exit 0`;
         description: 'No ESLint configuration found. Consider adding linting for code quality.',
         severity: 'low',
         category: 'code-quality',
-        autoFix: false
+        autoFix: false,
       });
     }
 
@@ -2067,12 +983,16 @@ exit 0`;
 
     // Check if we can auto-fix
     if (issue.autoFix && this.canAutoFixIssue(issue)) {
-      const { applyAutoFix } = await (await import('inquirer')).default.prompt([{
-        type: 'confirm',
-        name: 'applyAutoFix',
-        message: 'Can I automatically fix this issue?',
-        default: true
-      }]);
+      const { applyAutoFix } = await (
+        await import('inquirer')
+      ).default.prompt([
+        {
+          type: 'confirm',
+          name: 'applyAutoFix',
+          message: 'Can I automatically fix this issue?',
+          default: true,
+        },
+      ]);
 
       if (applyAutoFix) {
         await this.applyAutoFix(issue);
@@ -2160,21 +1080,22 @@ exit 0`;
       '**/*.test.{js,jsx,ts,tsx,cjs,mjs}',
       '**/*.spec.{js,jsx,ts,tsx,cjs,mjs}',
       '**/__tests__/**/*.{js,jsx,ts,tsx,cjs,mjs}',
-      '**/test/**/*.{js,jsx,ts,tsx,cjs,mjs}'
+      '**/test/**/*.{js,jsx,ts,tsx,cjs,mjs}',
     ];
 
     const globOptions = {
       cwd: this.projectRoot,
       absolute: false,
-      nodir: true
+      nodir: true,
     } as const;
 
     try {
       for (const pattern of patterns) {
         const matches: string[] = globSync(pattern, globOptions as any);
-        matches.forEach((file) => filesSet.add(file));
+        matches.forEach(file => filesSet.add(file));
       }
     } catch (error) {
+      console.log(`WARNING: Failed to collect test files: ${error}`);
       // Ignore glob errors
     }
 
@@ -2184,16 +1105,18 @@ exit 0`;
   private async enforceTestCoverageRequirement(config: any): Promise<number> {
     const configuredPath = config?.paths?.coverageSummary;
     const resolvedPath = configuredPath
-      ? (path.isAbsolute(configuredPath) ? configuredPath : path.join(this.projectRoot, configuredPath))
+      ? path.isAbsolute(configuredPath)
+        ? configuredPath
+        : path.join(this.projectRoot, configuredPath)
       : path.join(this.projectRoot, 'coverage', 'coverage-summary.json');
 
-    if (!await pathExists(resolvedPath)) {
+    if (!(await fse.pathExists(resolvedPath))) {
       throw new Error('Coverage summary not found');
     }
 
     let coverageRaw: string;
     try {
-      coverageRaw = await readFile(resolvedPath, 'utf-8');
+      coverageRaw = await fse.readFile(resolvedPath, 'utf-8');
     } catch (error) {
       throw new Error(`Unable to read coverage summary: ${error}`);
     }
@@ -2202,6 +1125,7 @@ exit 0`;
     try {
       coverageSummary = JSON.parse(coverageRaw);
     } catch (error) {
+      console.log(`WARNING: Failed to parse coverage summary: ${error}`);
       throw new Error('Coverage summary is not valid JSON');
     }
 
@@ -2212,7 +1136,7 @@ exit 0`;
 
     const metrics = ['lines', 'statements', 'branches', 'functions'] as const;
     const coverageValues = metrics
-      .map((metric) => total[metric]?.pct)
+      .map(metric => total[metric]?.pct)
       .filter((value): value is number => typeof value === 'number');
 
     if (coverageValues.length === 0) {
@@ -2223,143 +1147,27 @@ exit 0`;
     const requiredCoverage = config?.qualityGates?.minTestCoverage ?? 0;
 
     if (minimumCoverage < requiredCoverage) {
-      throw new Error(`Coverage ${minimumCoverage.toFixed(2)}% is below required ${requiredCoverage}% threshold.`);
+      throw new Error(
+        `Coverage ${minimumCoverage.toFixed(2)}% is below required ${requiredCoverage}% threshold.`
+      );
     }
 
     return minimumCoverage;
   }
 
   /**
-   * Run the plugin marketplace interface
-   */
-  async runPluginMarketplace(): Promise<void> {
-    const inquirer = (await import('inquirer')).default;
-
-    console.log(chalk.cyan('\n🛒 Plugin Marketplace'));
-    console.log(chalk.gray('Discover and install QA plugins...\n'));
-
-    // Get available plugins
-    const availablePlugins = await this.getAvailablePlugins();
-
-    if (availablePlugins.length === 0) {
-      console.log(chalk.yellow('⚠️  No plugins available in the marketplace at this time.'));
-      return;
-    }
-
-    // Display available plugins
-    console.log(chalk.blue('Available Plugins:\n'));
-    availablePlugins.forEach((plugin, index) => {
-      console.log(`${index + 1}. ${plugin.name}`);
-      console.log(`   ${plugin.description}`);
-      console.log(`   Version: ${plugin.version}`);
-      console.log(`   Author: ${plugin.author}`);
-      if (plugin.tags && plugin.tags.length > 0) {
-        console.log(`   Tags: ${plugin.tags.join(', ')}`);
-      }
-      console.log('');
-    });
-
-    // Ask user which plugin to install
-    const { selectedPlugin } = await inquirer.prompt([{
-      type: 'list',
-      name: 'selectedPlugin',
-      message: 'Which plugin would you like to install?',
-      choices: [
-        { name: 'Cancel', value: null },
-        ...availablePlugins.map((plugin, index) => ({
-          name: `${plugin.name} (${plugin.version})`,
-          value: index
-        }))
-      ]
-    }]);
-
-    if (selectedPlugin !== null) {
-      const plugin = availablePlugins[selectedPlugin];
-      await this.installAndConfigurePlugin(plugin);
-    }
-  }
-
-  /**
    * Get available plugins from the marketplace
    */
   private async getAvailablePlugins(): Promise<any[]> {
-    // For now, return a hardcoded list of example plugins
-    // In a real implementation, this would fetch from a remote API
-    return [
-      {
-        name: 'security-scan',
-        description: 'Advanced security vulnerability scanning',
-        version: '1.0.0',
-        author: 'Echain Team',
-        tags: ['security', 'vulnerability'],
-        packageName: '@echain/qa-plugin-security'
-      },
-      {
-        name: 'performance-monitor',
-        description: 'Performance monitoring and optimization checks',
-        version: '1.0.0',
-        author: 'Echain Team',
-        tags: ['performance', 'optimization'],
-        packageName: '@echain/qa-plugin-performance'
-      },
-      {
-        name: 'accessibility-checker',
-        description: 'Web accessibility compliance testing',
-        version: '1.0.0',
-        author: 'Echain Team',
-        tags: ['accessibility', 'a11y'],
-        packageName: '@echain/qa-plugin-accessibility'
-      },
-      {
-        name: 'code-coverage',
-        description: 'Enhanced code coverage reporting',
-        version: '1.0.0',
-        author: 'Echain Team',
-        tags: ['coverage', 'testing'],
-        packageName: '@echain/qa-plugin-coverage'
-      }
-    ];
+    return this.pluginManager.getAvailablePlugins();
   }
 
-  /**
-   * Install and configure a plugin
-   */
-  private async installAndConfigurePlugin(plugin: any): Promise<void> {
-    console.log(chalk.blue(`\n📦 Installing plugin: ${plugin.name}`));
 
-    try {
-      // Install the plugin package
-      await this.installPlugin(plugin.packageName);
 
-      // Configure the plugin
-      await this.configurePlugin(plugin.name);
-
-      console.log(chalk.green(`✅ Plugin ${plugin.name} installed and configured successfully!`));
-    } catch (error: any) {
-      console.log(chalk.red(`❌ Failed to install plugin ${plugin.name}: ${error.message}`));
-    }
-  }
-
-  /**
-   * Install a plugin by package name
-   */
-  async installPlugin(packageName: string): Promise<{ success: boolean; installedPath?: string; error?: string }> {
-    console.log(chalk.blue(`\n📦 Installing ${packageName}...`));
-
-    try {
-      // Run npm install
-      await this.runCommand(`npm install --save-dev ${packageName}`, `Install ${packageName}`);
-
-      console.log(chalk.green(`✅ Package ${packageName} installed successfully`));
-
-      // Reload plugins to include the new one
-      await this.loadPlugins();
-
-      return { success: true };
-
-    } catch (error: any) {
-      return { success: false, error: error.message };
-    }
+  async installPlugin(
+    packageName: string
+  ): Promise<{ success: boolean; installedPath?: string; error?: string }> {
+    return this.pluginManager.installPlugin(packageName);
   }
 
   /**
@@ -2390,20 +1198,20 @@ exit 0`;
     const defaultConfigs: { [key: string]: any } = {
       'security-scan': {
         enabled: true,
-        severity: 'medium'
+        severity: 'medium',
       },
       'performance-monitor': {
         enabled: true,
-        threshold: 100
+        threshold: 100,
       },
       'accessibility-checker': {
         enabled: true,
-        standards: ['WCAG2A', 'WCAG2AA']
+        standards: ['WCAG2A', 'WCAG2AA'],
       },
       'code-coverage': {
         enabled: true,
-        minimum: 80
-      }
+        minimum: 80,
+      },
     };
 
     return defaultConfigs[pluginName] || null;
@@ -2419,10 +1227,11 @@ exit 0`;
     const configPath = path.join(this.projectRoot, '.qa-config.json');
     let existingConfig = {};
 
-    if (await pathExists(configPath)) {
+    if (await fse.pathExists(configPath)) {
       try {
-        existingConfig = JSON.parse(await readFile(configPath, 'utf-8'));
+        existingConfig = JSON.parse(await fse.readFile(configPath, 'utf-8'));
       } catch (error) {
+        console.log(`WARNING: Failed to read existing config: ${error}`);
         // Ignore parse errors
       }
     }
@@ -2431,42 +1240,118 @@ exit 0`;
       ...existingConfig,
       plugins: {
         ...((existingConfig as any).plugins || {}),
-        [pluginName]: config
-      }
+        [pluginName]: config,
+      },
     };
 
-    await writeFile(configPath, JSON.stringify(updatedConfig, null, 2));
+    await fse.writeFile(configPath, JSON.stringify(updatedConfig, null, 2));
   }
 
   /**
-   * List all installed plugins
+   * Lists all installed plugins
    */
   async listInstalledPlugins(): Promise<void> {
-    console.log(chalk.cyan('\n📋 Installed Plugins\n'));
+    return this.pluginManager.listInstalledPlugins();
+  }
 
-    if (this.plugins.size === 0) {
-      console.log(chalk.yellow('No plugins installed.'));
-      console.log(chalk.gray('Run "echain-qa marketplace" to browse available plugins.'));
-      return;
+  /**
+   * Securely reads a file with comprehensive security analysis
+   * @param filePath Absolute or relative path to the file to read
+   * @param options Security and reading options
+   * @returns Promise resolving to file content and security analysis
+   */
+  async secureReadFile(
+    filePath: string,
+    options: {
+      /** Whether to allow reading files with security warnings */
+      allowWithWarnings?: boolean;
+      /** Whether to throw on critical security risks */
+      strictMode?: boolean;
+      /** Maximum file size to read (in bytes) */
+      maxFileSize?: number;
+      /** Encoding for text files */
+      encoding?: string;
+    } = {}
+  ): Promise<{
+    content: string | Buffer;
+    securityAnalysis: {
+      assessment: import('./security/FileSecurityAnalyzer.js').RiskAssessment;
+      warnings: import('./security/SecurityWarningGenerator.js').WarningMessage[];
+      isSafe: boolean;
+    };
+  }> {
+    const {
+      allowWithWarnings = false,
+      strictMode = true,
+      maxFileSize = 10 * 1024 * 1024, // 10MB default
+      encoding = 'utf8'
+    } = options;
+
+    // Resolve file path
+    const resolvedPath = path.isAbsolute(filePath)
+      ? filePath
+      : path.resolve(this.projectRoot, filePath);
+
+    // Analyze file security
+    const securityResult = await this.fileSecurityAnalyzer.analyzeFile(resolvedPath);
+
+    // Assess risk
+    const riskAssessment = this.riskAssessmentEngine.assessRisk(securityResult.riskAssessment.riskFactors);
+
+    // Generate warnings
+    const warnings = this.securityWarningGenerator.generateWarnings(riskAssessment);
+
+    // Determine if file is safe to read
+    const hasBlockingWarnings = warnings.some(w => w.isBlocking);
+    const hasCriticalRisk = riskAssessment.riskLevel === 'CRITICAL';
+    const hasWarnings = warnings.length > 0;
+    const isSafe = !hasBlockingWarnings && !hasCriticalRisk && !hasWarnings;
+
+    // Check file size
+    if (securityResult.fileSize > maxFileSize) {
+      throw new Error(`File size (${securityResult.fileSize} bytes) exceeds maximum allowed size (${maxFileSize} bytes)`);
     }
 
-    let index = 1;
-    for (const [pluginName, plugin] of this.plugins) {
-      console.log(`${index}. ${pluginName}`);
-      console.log(`   ${plugin.description || 'No description available'}`);
-      console.log(`   Version: ${plugin.version || 'Unknown'}`);
-      console.log(`   Enabled: ${this.pluginConfigs[pluginName]?.enabled !== false ? 'Yes' : 'No'}`);
+    // Enforce security policies
+    if (strictMode && hasCriticalRisk) {
+      throw new Error(`CRITICAL security risk detected. File reading blocked. ${warnings.map(w => w.title).join(', ')}`);
+    }
 
-      // Show plugin-specific config if available
-      const config = this.pluginConfigs[pluginName];
-      if (config && Object.keys(config).length > 1) { // More than just 'enabled'
-        console.log(`   Configuration: ${JSON.stringify(config)}`);
+    if (!allowWithWarnings && !isSafe) {
+      throw new Error(`Security warnings detected. Use allowWithWarnings=true to proceed. ${warnings.map(w => w.title).join(', ')}`);
+    }
+
+    // Log security analysis
+    if (!isSafe) {
+      this.logger.log('WARNING', `Reading file with security warnings: ${resolvedPath}`);
+      warnings.forEach(warning => {
+        this.logger.log('WARNING', `${warning.priority.toUpperCase()}: ${warning.title} - ${warning.description}`);
+      });
+    } else {
+      this.logger.log('INFO', `File security analysis passed: ${resolvedPath}`);
+    }
+
+    // Read file content
+    let content: string | Buffer;
+    try {
+      if (securityResult.metadata.isBinary) {
+        // Read as buffer for binary files
+        content = await fs.readFile(resolvedPath);
+      } else {
+        // Read as text with specified encoding
+        content = await fs.readFile(resolvedPath, { encoding: (encoding || 'utf8') as any });
       }
-
-      console.log('');
-      index++;
+    } catch (error) {
+      throw new Error(`Failed to read file: ${error}`);
     }
 
-    console.log(chalk.gray(`Total: ${this.plugins.size} plugin${this.plugins.size === 1 ? '' : 's'} installed`));
+    return {
+      content,
+      securityAnalysis: {
+        assessment: riskAssessment,
+        warnings,
+        isSafe
+      }
+    };
   }
 }

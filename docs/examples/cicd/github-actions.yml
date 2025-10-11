@@ -1,0 +1,73 @@
+name: QA Checks
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18, 20]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Setup Foundry
+      uses: foundry-rs/foundry-toolchain@v1
+
+    - name: Install Slither
+      run: pip3 install slither-analyzer
+
+    - name: Run QA checks
+      run: npx echain-qa run --config .qa-config.ci.json
+
+    - name: Upload QA reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: qa-reports-node-${{ matrix.node-version }}
+        path: qa-reports/
+        retention-days: 30
+
+    - name: Comment PR with QA results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+
+          const reportPath = path.join(process.cwd(), 'qa-reports', 'summary.json');
+          if (fs.existsSync(reportPath)) {
+            const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+
+            const body = `## QA Check Results
+
+            **Status:** ${report.summary.status}
+            **Passed:** ${report.summary.passedChecks}
+            **Failed:** ${report.summary.failedChecks}
+
+            [View full report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+          }

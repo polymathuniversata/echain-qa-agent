@@ -1,21 +1,25 @@
 {
   "name": "echain-qa-agent",
-  "version": "2.1.5",
-  "description": "Comprehensive QA automation for blockchain and web3 projects - ensures code quality, runs tests, and updates documentation",
+  "version": "2.1.6",
+  "description": "Experimental: Comprehensive QA automation for blockchain and web3 projects - ensures code quality, runs tests, and updates documentation",
   "main": "dist/index.js",
   "bin": {
     "echain-qa": "./dist/cli.js",
-    "echain": "./dist/cli.js"
+    "echain": "./dist/cli.js",
+    "echain-qa-mcp": "./dist/mcp-server.js",
+    "echain-qa-api": "./dist/api-server.js"
   },
-  "type": "commonjs",
+  "type": "module",
   "scripts": {
-    "build": "npx echain-qa run --dry-run --quiet && tsc && node dist/cli.js run --dry-run --quiet",
+    "build": "tsc",
     "dev": "npx echain-qa run --dry-run --quiet && node dist/cli.js run --dry-run --quiet && ts-node src/cli.ts",
     "test": "npx echain-qa run --dry-run --quiet && node dist/cli.js run --dry-run --quiet && jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:qa": "npm run build && node dist/cli.js run --verbose",
     "lint": "eslint src/**/*.ts",
+    "format": "prettier --write \"src/**/*.ts\" \"*.js\" \"*.json\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"*.js\" \"*.json\"",
     "type-check": "tsc --noEmit",
     "prepublishOnly": "npm run build",
     "qa": "echain-qa run",
@@ -27,7 +31,11 @@
     "qa:ci": "./scripts/ci-pipeline.sh",
     "dev:qa": "./scripts/dev-with-qa.sh",
     "setup:hooks": "./scripts/setup-hooks.sh",
-    "postinstall": "node -e \"const fs=require('fs');const path=require('path');const projectRoot=path.resolve('../../../');if(fs.existsSync(path.join(projectRoot,'.git'))){console.log('\\n🛡️ Auto-setting up QA git hooks...');process.chdir(projectRoot);require('child_process').execSync('npx echain-qa setup-hooks',{stdio:'inherit'});}else{console.log('\\n🛡️ QA Agent installed! For automatic git hooks, run \\\"echain-qa setup-hooks\\\" in your project directory.');}\""
+    "mcp-server": "node dist/mcp-server.js",
+    "api-server": "node dist/api-server.js",
+    "api-server:dev": "ts-node src/api-server.ts",
+    "mcp-server:dev": "ts-node src/mcp-server.ts",
+    "postinstall": ""
   },
   "keywords": [
     "qa",
@@ -50,30 +58,47 @@
     "url": "https://github.com/polymathuniversata/echain-qa-agent/issues"
   },
   "homepage": "https://github.com/polymathuniversata/echain-qa-agent#readme",
+  "files": [
+    "dist/",
+    "scripts/",
+    "docs/",
+    "mcp-config.json",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=18.0.0",
     "bun": ">=1.0.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.4.0",
     "ajv": "^8.17.1",
     "chalk": "^5.3.0",
     "cli-progress": "^3.12.0",
     "commander": "^12.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.0",
     "fs-extra": "^11.2.0",
     "glob": "^10.3.10",
-    "inquirer": "^9.3.8"
+    "inquirer": "^9.3.8",
+    "undici": "^7.16.0"
   },
   "devDependencies": {
     "@types/cli-progress": "^3.11.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
     "@types/fs-extra": "^11.0.4",
     "@types/glob": "^8.1.0",
     "@types/inquirer": "^9.0.9",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.19.19",
+    "@typescript-eslint/eslint-plugin": "^8.46.0",
+    "@typescript-eslint/parser": "^8.46.0",
     "bun-types": "^1.0.0",
     "echain-qa-agent": "^2.1.4",
-    "eslint": "^8.55.0",
+    "eslint": "^8.57.1",
     "jest": "^30.2.0",
+    "prettier": "^3.6.2",
     "ts-jest": "^29.4.4",
     "typedoc": "^0.28.13",
     "typescript": "^5.3.0"

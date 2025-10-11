@@ -8,7 +8,7 @@ async function testQAAgent() {
   const qaAgent = new QAAgent({
     verbose: true,
     dryRun: true, // Don't actually run commands, just test the logic
-    projectRoot: process.cwd()
+    projectRoot: process.cwd(),
   });
 
   try {
@@ -20,11 +20,10 @@ async function testQAAgent() {
 
     console.log('\n🎉 QA Agent package test completed successfully!');
     console.log('The package is ready for publication and use in blockchain projects.');
-
   } catch (error) {
     console.error('❌ Test failed:', error.message);
     process.exit(1);
   }
 }
 
-testQAAgent();// QA agent test
+testQAAgent(); // QA agent test
