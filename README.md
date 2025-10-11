@@ -34,6 +34,9 @@ API documentation is automatically generated and available in [`docs/api`](E:\Po
 - 🔧 **Extensible**: Plugin system for custom QA checks
 - 📈 **Progress Tracking**: Visual feedback for all operations
 - 🚀 **CI/CD Ready**: Pre-built pipelines for GitHub Actions and Jenkins
+- 🔍 **Advanced Security Analysis**: File security scanning, risk assessment, and security warnings
+- 🛠️ **Diagnostic & Troubleshooting Tools**: Interactive troubleshooting wizard, git hooks management, and intelligent caching
+- 📊 **Comprehensive Reporting**: Detailed QA reports with structured JSON output and session logs
 
 ## Installation
 

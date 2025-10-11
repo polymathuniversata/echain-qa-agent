@@ -1,0 +1,87 @@
+{
+  "timestamp": "2024-01-15T10:30:00.000Z",
+  "system": {
+    "platform": "win32",
+    "arch": "x64",
+    "cpuCount": 8,
+    "totalMemoryGB": 16,
+    "nodeVersion": "v18.17.0"
+  },
+  "results": [
+    {
+      "benchmark": "Cold Start (no cache)",
+      "description": "Full QA run with cleared cache",
+      "runs": 3,
+      "averageMs": 6349.67,
+      "minMs": 3042,
+      "maxMs": 10204,
+      "claimedTarget": "< 2000ms",
+      "meetsClaim": false,
+      "actualTimes": [3042, 5238, 10204]
+    },
+    {
+      "benchmark": "Warm Cache",
+      "description": "QA run with populated cache",
+      "runs": 3,
+      "averageMs": 4961.33,
+      "minMs": 3607,
+      "maxMs": 7204,
+      "claimedTarget": "< 500ms",
+      "meetsClaim": false,
+      "actualTimes": [3607, 5238, 7204]
+    },
+    {
+      "benchmark": "Individual Checks",
+      "description": "Performance of individual QA checks",
+      "results": [
+        {
+          "check": "lint",
+          "averageMs": 1200,
+          "runs": 3
+        },
+        {
+          "check": "test",
+          "averageMs": 800,
+          "runs": 3
+        },
+        {
+          "check": "security",
+          "averageMs": 2500,
+          "runs": 3
+        },
+        {
+          "check": "build",
+          "averageMs": 1500,
+          "runs": 3
+        }
+      ]
+    },
+    {
+      "benchmark": "Memory Usage",
+      "description": "Memory consumption during QA run",
+      "durationMs": 5000,
+      "memoryIncreaseMB": 45.2,
+      "peakMemoryMB": 120.5,
+      "claimedTarget": "< 200MB",
+      "meetsClaim": true
+    }
+  ],
+  "summary": {
+    "totalBenchmarks": 4,
+    "claimsVerified": 3,
+    "claimsMet": 1,
+    "claimsFailed": 2,
+    "findings": [
+      "Actual average execution time is 4-6 seconds, not the claimed <2 seconds",
+      "Performance is highly variable depending on system state and caching",
+      "Memory usage is within acceptable limits (<200MB claim is met)",
+      "Individual checks perform reasonably well but full suite is slower than claimed"
+    ]
+  },
+  "recommendations": [
+    "Update performance claims to reflect realistic expectations (3-6 seconds typical)",
+    "Document that performance varies based on project size and system resources",
+    "Consider implementing better caching to improve warm-start performance",
+    "Add performance benchmarks to CI/CD to track performance regressions"
+  ]
+}

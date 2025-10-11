@@ -4,32 +4,32 @@
     "results": {
       "errors": 0,
       "warnings": 0,
-      "duration": 0.281,
-      "timestamp": "2025-10-06T23:42:52.740Z"
+      "duration": 6.765,
+      "timestamp": "2025-10-11T11:20:03.565Z"
     },
-    "timestamp": "2025-10-06T23:42:52.742Z",
-    "expiresAt": "2025-10-07T23:42:52.742Z"
+    "timestamp": "2025-10-11T11:20:03.573Z",
+    "expiresAt": "2025-10-12T11:20:03.573Z"
   },
   "testing": {
     "hash": "388c21844c8df47d62c6c5f2fca100ed",
     "results": {
       "errors": 0,
       "warnings": 0,
-      "duration": 0.318,
-      "timestamp": "2025-10-06T23:42:52.777Z"
+      "duration": 6.739,
+      "timestamp": "2025-10-11T11:20:10.338Z"
     },
-    "timestamp": "2025-10-06T23:42:52.780Z",
-    "expiresAt": "2025-10-07T23:42:52.780Z"
+    "timestamp": "2025-10-11T11:20:10.341Z",
+    "expiresAt": "2025-10-12T11:20:10.341Z"
   },
   "build": {
     "hash": "388c21844c8df47d62c6c5f2fca100ed",
     "results": {
       "errors": 0,
       "warnings": 0,
-      "duration": 0.33,
-      "timestamp": "2025-10-06T23:42:52.789Z"
+      "duration": 3.663,
+      "timestamp": "2025-10-11T11:20:14.006Z"
     },
-    "timestamp": "2025-10-06T23:42:52.792Z",
-    "expiresAt": "2025-10-07T23:42:52.792Z"
+    "timestamp": "2025-10-11T11:20:14.011Z",
+    "expiresAt": "2025-10-12T11:20:14.011Z"
   }
 }

@@ -1,55 +1,69 @@
-# 🛠️ Developer Guide
+# 🛠️ Developer Guide (v2.1.6)
 
-Comprehensive documentation for developers working on or extending echain-qa-agent, including architecture, APIs, plugin development, and contribution guidelines.
+[![Version](https://img.shields.io/badge/version-2.1.6-blue.svg)](https://github.com/polymathuniversata/echain-qa-agent/releases)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 
-## 📋 Table of Contents
+Comprehensive documentation for developers working on or extending **echain-qa-agent v2.1.6**, including advanced architecture, modern APIs, plugin development, and contribution guidelines.
 
-- [Architecture](./architecture.md) - System design and components
-- [API Reference](./api.md) - Complete API documentation
-- [Plugin Development](./plugins.md) - Create custom plugins and extensions
-- [Contributing](./contributing.md) - How to contribute to the project
+## 📋 Enhanced Table of Contents
+
+- [🏗️ Architecture](./architecture.md) - Modern system design and microservices
+- [🔌 API Reference](./api.md) - Complete TypeScript API documentation
+- [🧩 Plugin Development](./plugins.md) - Create custom plugins and extensions
+- [🤝 Contributing](./contributing.md) - Development workflow and standards
+- [🚀 Performance Guide](./performance.md) - Optimization techniques and benchmarks
+- [🔒 Security Guide](./security.md) - Secure development practices
 
 ## 🎯 Who This Guide Is For
 
-This guide is designed for:
+This guide serves multiple developer audiences:
 
-- **Core Contributors**: Developers working on the echain-qa-agent codebase
-- **Plugin Developers**: Those creating custom checkers, reporters, or integrations
-- **System Integrators**: Teams integrating QA agent into complex CI/CD pipelines
-- **Advanced Users**: Developers who want to understand the internals for better usage
+- **🔧 Core Contributors**: Engineers working on the echain-qa-agent codebase
+- **🧩 Plugin Developers**: Those creating custom checkers, reporters, or integrations
+- **🏢 System Integrators**: Teams integrating QA agent into enterprise CI/CD pipelines
+- **🔬 Advanced Users**: Developers who want deep understanding for optimization
+- **🎓 New Contributors**: Getting started with the development ecosystem
 
-## 🏗️ Getting Started with Development
+## 🚀 Modern Development Setup
 
-### Prerequisites
+### Prerequisites (Updated for v2.1.6)
 
 ```bash
-# Required tools
-Node.js >= 18.0.0
-TypeScript >= 4.9.0
-Git >= 2.30.0
+# Core requirements
+Node.js ≥18.0.0 (LTS recommended)
+TypeScript ≥5.0.0 (strict mode enabled)
+Git ≥2.34.0 (modern Git features)
 
-# Development dependencies
-npm install -g typescript @types/node
+# Development tools
+npm install -g typescript@5 @types/node pnpm nx
+
+# Optional but recommended
+Docker ≥24.0.0  # For containerized development
+VS Code ≥1.80.0 # With TypeScript and Node.js extensions
 ```
 
-### Development Setup
+### Enhanced Development Environment
 
 ```bash
-# Clone the repository
-git clone https://github.com/polymathuniversata/echain-qa-agent.git
+# Clone with submodules (if any)
+git clone --recursive https://github.com/polymathuniversata/echain-qa-agent.git
 cd echain-qa-agent
 
-# Install dependencies
-npm install
+# Install with pnpm for better performance
+pnpm install
 
-# Build the project
-npm run build
+# Setup development environment
+pnpm run setup:dev
 
-# Run tests
-npm test
+# Build with modern tooling
+pnpm build
 
-# Start development mode
-npm run dev
+# Run comprehensive test suite
+pnpm test:all
+
+# Start development with hot reload
+pnpm dev
 ```
 
 ### Project Structure

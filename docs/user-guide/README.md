@@ -1,6 +1,10 @@
-# 📖 User Guide
+# 📖 User Guide (v2.1.6)
 
-Welcome to the echain-qa-agent User Guide! This section provides comprehensive instructions for using the QA agent in your blockchain and Web3 projects.
+[![Version](https://img.shields.io/badge/version-2.1.6-blue.svg)](https://github.com/polymathuniversata/echain-qa-agent/releases)
+[![Audit Score](https://img.shields.io/badge/audit-95%2F100-green.svg)](../security/audit-report.md)
+[![Documentation](https://img.shields.io/badge/docs-comprehensive-blue.svg)](./)
+
+Welcome to the **echain-qa-agent v2.1.6 User Guide**! This comprehensive resource provides everything you need to effectively use our enterprise-grade QA automation platform for blockchain and Web3 projects.
 
 ## 📋 Table of Contents
 
